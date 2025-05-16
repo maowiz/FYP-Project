@@ -10,8 +10,11 @@ def main():
     # Initialize modules
     voice_recognizer = VoiceRecognizer()
     speech = Speech()
-    file_manager = FileManager(speech.speak)
-    command_handler = CommandHandler(file_manager)
+    file_manager = FileManager(speech)
+    command_handler = CommandHandler(file_manager, voice_recognizer)
+    
+    # Flag to track if we've already asked about listing commands
+    asked_about_commands = False
 
     # Start speaking
     speech.start_speaking()
@@ -35,11 +38,31 @@ def main():
             if cmd_text:
                 # Execute the command if recognized
                 if not command_handler.execute_command(cmd_text):
-                    print("Unknown command. Available commands are:")
-                    speech.speak("Unknown command. Available commands are:")
-                    for phrase in command_handler.get_command_list():
-                        print(f"  • {phrase}")
-                        speech.speak(phrase)
+                    print("Unknown command.")
+                    
+                    # Track how many times we've had unknown commands
+                    if not hasattr(main, 'unknown_command_count'):
+                        main.unknown_command_count = 0
+                    main.unknown_command_count += 1
+                    
+                    # First time: Speak the error and suggest listing commands
+                    if main.unknown_command_count == 1:
+                        speech.speak("Unknown command.")
+                        print("You can say 'list commands' to hear all available commands.")
+                        speech.speak("You can say list commands to hear all available commands.")
+                    # Second time: Just a brief notification
+                    elif main.unknown_command_count == 2:
+                        speech.speak("Unknown command. Try saying list commands.")
+                    # After that: Just make a sound to indicate error
+                    else:
+                        # Play a short error sound (beep)
+                        print("\a")  # Terminal bell sound
+                        speech.speak("Unknown command")
+                        
+                    # Reset the counter after a while
+                    if main.unknown_command_count > 5:
+                        main.unknown_command_count = 0
+                
                 # Prompt for the next command
                 print("\nSay another command:")
                 speech.speak("Say another command")
