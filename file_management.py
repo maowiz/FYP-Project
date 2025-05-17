@@ -196,8 +196,10 @@ class FileManager:
         """Ask for the folder or file name and return it using voice or text input."""
         # Try voice input first if voice_recognizer is provided
         if voice_recognizer:
-            print(prompt + " (say 'quit' to return to main menu)")
-            self.speak(prompt)
+            # Use a shorter prompt and simpler exit commands
+            short_prompt = "Name?" 
+            print(prompt + " (say 'exit' or 'back' to return to main menu)")
+            self.speak(short_prompt)
             
             wait_time = 0
             while wait_time < 15:  # Wait up to 15 seconds for voice input
@@ -205,8 +207,8 @@ class FileManager:
                 if cmd_text:
                     print(f"You said: {cmd_text}")
                     
-                    # Check for quit command
-                    if "quit" in cmd_text.lower():
+                    # Check for exit commands - using simpler words that are easier to detect
+                    if any(word in cmd_text.lower() for word in ["exit", "back", "cancel", "stop"]):
                         raise self.ReturnToMain()
                     
                     # Clean up the name (remove common phrases like "call it" or "name it")
@@ -218,8 +220,8 @@ class FileManager:
                     
                     # If after cleaning the name is too short, ask for clarification
                     if len(name) < 2:
-                        print("The name is too short. Please provide a longer name.")
-                        self.speak("The name is too short. Please provide a longer name.")
+                        print("Name too short")
+                        self.speak("Name too short")
                         continue
                     
                     if name:
@@ -227,24 +229,24 @@ class FileManager:
                         self.speak(f"Using name: {name}")
                         return name
                     else:
-                        print("I couldn't understand a name. Please try again.")
-                        self.speak("I couldn't understand a name. Please try again.")
+                        print("Try again")
+                        self.speak("Try again")
                 
                 time.sleep(0.5)
                 wait_time += 0.5
             
             print("No voice input detected. Falling back to text input.")
-            self.speak("No voice input detected. Please type the name.")
+            self.speak("Type the name")
         
         # Fallback to text input
         while True:
-            name = input(prompt + " ('quit' to return to main menu): ").strip()
-            if name.lower() == 'quit':
+            name = input(prompt + " ('exit' to return to main menu): ").strip()
+            if name.lower() in ['exit', 'back', 'quit', 'cancel']:
                 raise self.ReturnToMain()
             if name:
                 return name
-            print("Name cannot be empty. Please try again.")
-            self.speak("Name cannot be empty. Please try again.")
+            print("Name cannot be empty")
+            self.speak("Name cannot be empty")
 
     def create_folder(self, directory, folder_name):
         """Create a folder in the specified directory with the given name."""
@@ -316,8 +318,8 @@ class FileManager:
                 self.speak(f"Error opening file: {e}")
                 return False
         else:
-            print(f"'{name}' does not exist in {directory} as a folder or file.")
-            self.speak("Not found. Try again.")
+            print(f"'{name}' not found.")
+            self.speak("Not found.")
             # Return a special tuple to indicate we need to try again
             return ("not_found", directory)
 

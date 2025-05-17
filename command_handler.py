@@ -1,6 +1,8 @@
 import sys
 import os
 import time
+import re
+from fuzzywuzzy import fuzz
 
 class CommandHandler:
     def __init__(self, file_manager, voice_recognizer=None):
@@ -20,47 +22,89 @@ class CommandHandler:
             "list commands": self.handle_list_commands,
             "exit": self.handle_exit
         }
+        # Context dictionary to store recent actions
+        self.context = {
+            "last_created_folder": None,  # Stores (directory, folder_name)
+            "last_opened_item": None,    # Stores (directory, name)
+        }
 
     def get_command_list(self):
         """Return the list of available commands."""
         return list(self.commands.keys())
 
     def execute_command(self, cmd_text):
-        """Execute the command based on the transcribed text.
-        Now with improved partial command matching."""
+        """Execute commands with fuzzy matching, multiple commands, and context awareness."""
         cmd_text = cmd_text.lower()
         
         # Check for stop command first (highest priority)
-        if "stop" in cmd_text.lower():
+        if "stop" in cmd_text:
             print("Stopping current operation and returning to main menu")
             self.file_manager.speak("Stopping. Ready for new command.")
             return True
-            
-        # First try exact matches
-        for cmd, handler in self.commands.items():
-            if cmd in cmd_text:
-                print(f"Executing command: {cmd}")
-                handler()
-                return True
-        
-        # If no exact match, try partial matching for common commands
-        partial_matches = {
-            "open folder": "open folder or file",
-            "open file": "open folder or file",
-            "rename folder": "rename folder or file",
-            "rename file": "rename folder or file",
-            "help": "list commands",
-            "commands": "list commands",
-            "what can you do": "list commands"
-        }
-        
-        for partial, full_cmd in partial_matches.items():
-            if partial in cmd_text:
-                print(f"Recognized partial command '{partial}' as '{full_cmd}'")
-                self.commands[full_cmd]()
-                return True
+
+        # Handle pronouns like "it" by replacing with last created/opened item
+        if " it " in cmd_text or cmd_text.endswith(" it"):
+            if self.context["last_created_folder"]:
+                directory, name = self.context["last_created_folder"]
+                cmd_text = cmd_text.replace(" it", f" {name}")
+            elif self.context["last_opened_item"]:
+                directory, name = self.context["last_opened_item"]
+                cmd_text = cmd_text.replace(" it", f" {name}")
+
+        # Split text on conjunctions like "and" to detect multiple commands
+        command_parts = re.split(r'\s+and\s+', cmd_text)
+        executed = False
+
+        # Process each command part
+        for part in command_parts:
+            part = part.strip()
+            if not part:
+                continue
+
+            # Try exact matches
+            for cmd, handler in self.commands.items():
+                if cmd in part:
+                    print(f"Executing command: {cmd}")
+                    handler()
+                    executed = True
+                    break  # Move to next command part after executing one
+
+            # If no exact match, try fuzzy matching
+            if not executed:
+                for cmd, handler in self.commands.items():
+                    if fuzz.ratio(cmd, part) > 80:  # 80% similarity threshold
+                        print(f"Executing fuzzy-matched command: {cmd} (input: {part})")
+                        handler()
+                        executed = True
+                        break
+
+            # If no exact or fuzzy match, try partial matching
+            if not executed:
+                partial_matches = {
+                    "open folder": "open folder or file",
+                    "open file": "open folder or file",
+                    "rename folder": "rename folder or file",
+                    "rename file": "rename folder or file",
+                    "help": "list commands",
+                    "commands": "list commands",
+                    "what can you do": "list commands"
+                }
                 
-        return False
+                for partial, full_cmd in partial_matches.items():
+                    if partial in part:
+                        print(f"Recognized partial command '{partial}' as '{full_cmd}'")
+                        self.commands[full_cmd]()
+                        executed = True
+                        break
+                    # Try fuzzy matching for partial commands
+                    if fuzz.ratio(partial, part) > 80:
+                        print(f"Recognized fuzzy-matched partial command '{partial}' as '{full_cmd}' (input: {part})")
+                        self.commands[full_cmd]()
+                        executed = True
+                        break
+
+        # Return True if at least one command was executed
+        return executed
 
     def handle_create_folder(self):
         """Handle the 'create folder' command."""
@@ -72,6 +116,9 @@ class CommandHandler:
                 if isinstance(result, tuple):
                     directory, folder_name = result
                 else:
+                    # Update context with created folder
+                    self.context["last_created_folder"] = (directory, folder_name)
+                    self.context["last_opened_item"] = None
                     break
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
@@ -127,8 +174,13 @@ class CommandHandler:
                         self.file_manager.speak("Please include the dot, for example, dot text.")
                     
                     result = self.file_manager.open_folder_or_file(directory, name, file_type)
-                    if result == True or result == False:
-                        break  # Successfully opened or error that's not 'not found'
+                    if result == True:
+                        # Update context with opened item
+                        self.context["last_opened_item"] = (directory, name)
+                        self.context["last_created_folder"] = None
+                        break
+                    elif result == False:
+                        break  # Error that's not 'not found'
                 else:
                     # Try to open as folder or file without type
                     result = self.file_manager.open_folder_or_file(directory, name)
@@ -140,7 +192,10 @@ class CommandHandler:
                         self.file_manager.speak("Please try a different name.")
                         # Continue the loop to ask again
                     else:
-                        # Either success or some other error
+                        if result == True:
+                            # Update context with opened item
+                            self.context["last_opened_item"] = (directory, name)
+                            self.context["last_created_folder"] = None
                         break
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
@@ -185,7 +240,11 @@ class CommandHandler:
                 
                 # If deletion was successful or there was an error other than 'not found'
                 if result == True:
-                    # Successfully deleted
+                    # Clear context if deleted item was in context
+                    if self.context["last_created_folder"] and self.context["last_created_folder"][1] == folder_name:
+                        self.context["last_created_folder"] = None
+                    if self.context["last_opened_item"] and self.context["last_opened_item"][1] == folder_name:
+                        self.context["last_opened_item"] = None
                     break
                 else:
                     # Check if the folder exists
@@ -207,7 +266,11 @@ class CommandHandler:
         try:
             directory = self.file_manager.select_directory(self.voice_recognizer)
             folder_name = self.file_manager.get_folder_or_file_name("Enter folder name to copy: ", self.voice_recognizer)
-            self.file_manager.copy_folder(directory, folder_name)
+            result = self.file_manager.copy_folder(directory, folder_name)
+            if result:
+                # Update context with copied folder
+                self.context["last_opened_item"] = (directory, folder_name)
+                self.context["last_created_folder"] = None
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")
@@ -217,7 +280,11 @@ class CommandHandler:
         try:
             directory = self.file_manager.select_directory(self.voice_recognizer)
             folder_name = self.file_manager.get_folder_or_file_name("Enter folder name to cut: ", self.voice_recognizer)
-            self.file_manager.cut_folder(directory, folder_name)
+            result = self.file_manager.cut_folder(directory, folder_name)
+            if result:
+                # Update context with cut folder
+                self.context["last_opened_item"] = (directory, folder_name)
+                self.context["last_created_folder"] = None
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")
@@ -226,7 +293,12 @@ class CommandHandler:
         """Handle the 'paste folder' command."""
         try:
             directory = self.file_manager.select_directory(self.voice_recognizer)
-            self.file_manager.paste_folder(directory)
+            result = self.file_manager.paste_folder(directory)
+            if result and self.file_manager.clipboard:
+                # Update context with pasted folder
+                folder_name = self.file_manager.clipboard["name"]
+                self.context["last_created_folder"] = (directory, folder_name)
+                self.context["last_opened_item"] = None
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")
@@ -237,7 +309,13 @@ class CommandHandler:
             directory = self.file_manager.select_directory(self.voice_recognizer)
             old_name = self.file_manager.get_folder_or_file_name("Enter current folder/file name to rename: ", self.voice_recognizer)
             new_name = self.file_manager.get_folder_or_file_name("Enter new folder/file name: ", self.voice_recognizer)
-            self.file_manager.rename_folder_or_file(directory, old_name, new_name)
+            result = self.file_manager.rename_folder_or_file(directory, old_name, new_name)
+            if result:
+                # Update context if renamed item was in context
+                if self.context["last_created_folder"] and self.context["last_created_folder"][1] == old_name:
+                    self.context["last_created_folder"] = (directory, new_name)
+                if self.context["last_opened_item"] and self.context["last_opened_item"][1] == old_name:
+                    self.context["last_opened_item"] = (directory, new_name)
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")
@@ -247,7 +325,11 @@ class CommandHandler:
         try:
             directory = self.file_manager.select_directory(self.voice_recognizer)
             file_name = self.file_manager.get_folder_or_file_name("Enter file name to read: ", self.voice_recognizer)
-            self.file_manager.read_text_file(directory, file_name)
+            result = self.file_manager.read_text_file(directory, file_name)
+            if result:
+                # Update context with read file
+                self.context["last_opened_item"] = (directory, file_name)
+                self.context["last_created_folder"] = None
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")

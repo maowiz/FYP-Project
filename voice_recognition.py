@@ -5,7 +5,7 @@ import collections
 import sys
 
 # --- Configuration for Voice Recognition ---
-MODEL_SIZE = "tiny"  # "tiny", "base" are fastest. Use "base" if "tiny" is not accurate enough.
+MODEL_SIZE = "base"  # "tiny", "base" are fastest. Use "base" if "tiny" is not accurate enough.
 DEVICE = "cpu"       # "cpu" or "cuda" (if you have a compatible NVIDIA GPU)
 COMPUTE_TYPE = "float32"  # Use "float32" for CPU compatibility
 
@@ -39,7 +39,7 @@ class VoiceRecognizer:
         if audio_data_np is None or audio_data_np.size < int(0.1 * SAMPLE_RATE):  # Min audio length check
             return ""
         try:
-            segments, _ = self.model.transcribe(audio_data_np, beam_size=1, language="en")
+            segments, _ = self.model.transcribe(audio_data_np, beam_size=5, language="en")
             full_text = "".join(segment.text for segment in segments).strip().lower()
             return full_text
         except Exception as e:

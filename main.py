@@ -25,6 +25,7 @@ def main():
     print(f"Settings: Chunk_duration={settings['Chunk_duration']}s, Silence_threshold={settings['Silence_threshold']}s, VAD_energy={settings['VAD_energy']}")
     print("Available commands: " + ", ".join(command_handler.get_command_list()))
     print("Speak clearly. The system will try to transcribe after you pause.")
+    print("You can use 'it' to refer to the last created or opened item (e.g., 'open it' after 'create folder').")
     speech.speak("Say a command")
 
     # Start listening for voice input
@@ -36,10 +37,9 @@ def main():
             # Check for new transcriptions
             cmd_text = voice_recognizer.get_transcription()
             if cmd_text:
-                # Execute the command if recognized
+                # Execute the command(s) and check if any were recognized
                 if not command_handler.execute_command(cmd_text):
-                    print("Unknown command.")
-                    
+                    print("Unknown command(s).")
                     # Track how many times we've had unknown commands
                     if not hasattr(main, 'unknown_command_count'):
                         main.unknown_command_count = 0
@@ -48,11 +48,11 @@ def main():
                     # First time: Speak the error and suggest listing commands
                     if main.unknown_command_count == 1:
                         speech.speak("Unknown command.")
-                        print("You can say 'list commands' to hear all available commands.")
-                        speech.speak("You can say list commands to hear all available commands.")
+                        print("You can say 'list commands' to hear all available commands or use 'it' for the last item.")
+                        speech.speak("You can say list commands to hear all available commands or use 'it' for the last item.")
                     # Second time: Just a brief notification
                     elif main.unknown_command_count == 2:
-                        speech.speak("Unknown command. Try saying list commands.")
+                        speech.speak("Unknown command. Try saying list commands or use 'it'.")
                     # After that: Just make a sound to indicate error
                     else:
                         # Play a short error sound (beep)
@@ -63,7 +63,7 @@ def main():
                     if main.unknown_command_count > 5:
                         main.unknown_command_count = 0
                 
-                # Prompt for the next command
+                # Prompt for the next command only after processing all parts
                 print("\nSay another command:")
                 speech.speak("Say another command")
 
