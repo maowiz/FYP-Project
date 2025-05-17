@@ -3,15 +3,17 @@ import sys
 from voice_recognition import VoiceRecognizer
 from speech import Speech
 from file_management import FileManager
+from os_management import OSManagement
 from command_handler import CommandHandler
 
 def main():
-    """Main function to run the voice-controlled file management assistant."""
+    """Main function to run the voice-controlled file and system management assistant."""
     # Initialize modules
-    voice_recognizer = VoiceRecognizer()
     speech = Speech()
+    voice_recognizer = VoiceRecognizer()
     file_manager = FileManager(speech)
-    command_handler = CommandHandler(file_manager, voice_recognizer)
+    os_manager = OSManagement(speech)
+    command_handler = CommandHandler(file_manager, os_manager, voice_recognizer)
     
     # Flag to track if we've already asked about listing commands
     asked_about_commands = False
@@ -21,7 +23,7 @@ def main():
 
     # Display initial message and settings
     settings = voice_recognizer.get_settings()
-    print("\n--- Real-time Voice File Management Assistant (Ctrl+C to stop) ---")
+    print("\n--- Real-time Voice File and System Management Assistant (Ctrl+C to stop) ---")
     print(f"Settings: Chunk_duration={settings['Chunk_duration']}s, Silence_threshold={settings['Silence_threshold']}s, VAD_energy={settings['VAD_energy']}")
     print("Available commands: " + ", ".join(command_handler.get_command_list()))
     print("Speak clearly. The system will try to transcribe after you pause.")

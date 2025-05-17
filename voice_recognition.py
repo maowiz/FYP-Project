@@ -41,6 +41,9 @@ class VoiceRecognizer:
         try:
             segments, _ = self.model.transcribe(audio_data_np, beam_size=5, language="en")
             full_text = "".join(segment.text for segment in segments).strip().lower()
+            # Clean up the text by removing punctuation marks except periods
+            import re
+            full_text = re.sub(r'[!,?;:"\[\]{}()\-_=+*/\\|<>]', '', full_text)
             return full_text
         except Exception as e:
             print(f"Transcription error: {e}")

@@ -5,8 +5,9 @@ import re
 from fuzzywuzzy import fuzz
 
 class CommandHandler:
-    def __init__(self, file_manager, voice_recognizer=None):
+    def __init__(self, file_manager, os_manager, voice_recognizer=None):
         self.file_manager = file_manager
+        self.os_manager = os_manager
         self.voice_recognizer = voice_recognizer
         self.commands = {
             "create folder": self.handle_create_folder,
@@ -20,7 +21,26 @@ class CommandHandler:
             "list contents": self.handle_list_contents,
             "get properties": self.handle_get_properties,
             "list commands": self.handle_list_commands,
-            "exit": self.handle_exit
+            "exit": self.handle_exit,
+            "increase volume": self.handle_volume_up,
+            "decrease volume": self.handle_volume_down,
+            "mute volume": self.handle_mute_toggle,
+            "unmute volume": self.handle_mute_toggle,
+            "maximize volume": self.handle_maximize_volume,
+            "set volume": self.handle_set_volume,
+            "increase brightness": self.handle_brightness_up,
+            "decrease brightness": self.handle_brightness_down,
+            "maximize brightness": self.handle_maximize_brightness,
+            "set brightness": self.handle_set_brightness,
+            "switch window": self.handle_switch_window,
+            "minimize all windows": self.handle_minimize_all_windows,
+            "restore windows": self.handle_restore_all_windows,
+            "maximize window": self.handle_maximize_current_window,
+            "minimize window": self.handle_minimize_current_window,
+            "close window": self.handle_close_current_window,
+            "move window left": self.handle_move_window_left,
+            "move window right": self.handle_move_window_right,
+            "take screenshot": self.handle_take_screenshot
         }
         # Context dictionary to store recent actions
         self.context = {
@@ -65,7 +85,7 @@ class CommandHandler:
             for cmd, handler in self.commands.items():
                 if cmd in part:
                     print(f"Executing command: {cmd}")
-                    handler()
+                    handler(part if cmd in ["set volume", "set brightness"] else None)
                     executed = True
                     break  # Move to next command part after executing one
 
@@ -74,7 +94,7 @@ class CommandHandler:
                 for cmd, handler in self.commands.items():
                     if fuzz.ratio(cmd, part) > 80:  # 80% similarity threshold
                         print(f"Executing fuzzy-matched command: {cmd} (input: {part})")
-                        handler()
+                        handler(part if cmd in ["set volume", "set brightness"] else None)
                         executed = True
                         break
 
@@ -87,26 +107,41 @@ class CommandHandler:
                     "rename file": "rename folder or file",
                     "help": "list commands",
                     "commands": "list commands",
-                    "what can you do": "list commands"
+                    "what can you do": "list commands",
+                    "turn volume up": "increase volume",
+                    "turn volume down": "decrease volume",
+                    "mute": "mute volume",
+                    "unmute": "unmute volume",
+                    "max volume": "maximize volume",
+                    "turn brightness up": "increase brightness",
+                    "turn brightness down": "decrease brightness",
+                    "max brightness": "maximize brightness",
+                    "next window": "switch window",
+                    "show desktop": "minimize all windows",
+                    "restore all windows": "restore windows",
+                    "maximize this window": "maximize window",
+                    "minimize this window": "minimize window",
+                    "close this app": "close window",
+                    "screenshot": "take screenshot"
                 }
                 
                 for partial, full_cmd in partial_matches.items():
                     if partial in part:
                         print(f"Recognized partial command '{partial}' as '{full_cmd}'")
-                        self.commands[full_cmd]()
+                        self.commands[full_cmd](part if full_cmd in ["set volume", "set brightness"] else None)
                         executed = True
                         break
                     # Try fuzzy matching for partial commands
                     if fuzz.ratio(partial, part) > 80:
                         print(f"Recognized fuzzy-matched partial command '{partial}' as '{full_cmd}' (input: {part})")
-                        self.commands[full_cmd]()
+                        self.commands[full_cmd](part if full_cmd in ["set volume", "set brightness"] else None)
                         executed = True
                         break
 
         # Return True if at least one command was executed
         return executed
 
-    def handle_create_folder(self):
+    def handle_create_folder(self, cmd_text=None):
         """Handle the 'create folder' command."""
         try:
             directory = self.file_manager.select_directory(self.voice_recognizer)
@@ -124,7 +159,7 @@ class CommandHandler:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")
 
-    def handle_open_folder_or_file(self):
+    def handle_open_folder_or_file(self, cmd_text=None):
         """Handle the 'open folder or file' command."""
         try:
             directory = self.file_manager.select_directory(self.voice_recognizer)
@@ -201,7 +236,7 @@ class CommandHandler:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")
 
-    def handle_delete_folder(self):
+    def handle_delete_folder(self, cmd_text=None):
         """Handle the 'delete folder' command."""
         try:
             directory = self.file_manager.select_directory(self.voice_recognizer)
@@ -261,7 +296,7 @@ class CommandHandler:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")
 
-    def handle_copy_folder(self):
+    def handle_copy_folder(self, cmd_text=None):
         """Handle the 'copy folder' command."""
         try:
             directory = self.file_manager.select_directory(self.voice_recognizer)
@@ -275,7 +310,7 @@ class CommandHandler:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")
 
-    def handle_cut_folder(self):
+    def handle_cut_folder(self, cmd_text=None):
         """Handle the 'cut folder' command."""
         try:
             directory = self.file_manager.select_directory(self.voice_recognizer)
@@ -289,7 +324,7 @@ class CommandHandler:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")
 
-    def handle_paste_folder(self):
+    def handle_paste_folder(self, cmd_text=None):
         """Handle the 'paste folder' command."""
         try:
             directory = self.file_manager.select_directory(self.voice_recognizer)
@@ -303,7 +338,7 @@ class CommandHandler:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")
 
-    def handle_rename_folder_or_file(self):
+    def handle_rename_folder_or_file(self, cmd_text=None):
         """Handle the 'rename folder or file' command."""
         try:
             directory = self.file_manager.select_directory(self.voice_recognizer)
@@ -320,7 +355,7 @@ class CommandHandler:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")
 
-    def handle_read_text_file(self):
+    def handle_read_text_file(self, cmd_text=None):
         """Handle the 'read text file' command."""
         try:
             directory = self.file_manager.select_directory(self.voice_recognizer)
@@ -334,7 +369,7 @@ class CommandHandler:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")
 
-    def handle_list_contents(self):
+    def handle_list_contents(self, cmd_text=None):
         """Handle the 'list contents' command."""
         try:
             directory = self.file_manager.select_directory(self.voice_recognizer)
@@ -343,7 +378,7 @@ class CommandHandler:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")
 
-    def handle_get_properties(self):
+    def handle_get_properties(self, cmd_text=None):
         """Handle the 'get properties' command."""
         try:
             directory = self.file_manager.select_directory(self.voice_recognizer)
@@ -353,7 +388,7 @@ class CommandHandler:
             print("Returning to main menu.")
             self.file_manager.speak("Returning to main menu.")
 
-    def handle_list_commands(self):
+    def handle_list_commands(self, cmd_text=None):
         """Handle the 'list commands' command - lists all available commands."""
         print("Available commands are:")
         self.file_manager.speak("Available commands are:")
@@ -363,8 +398,102 @@ class CommandHandler:
         print("You can say 'exit' to quit the program.")
         self.file_manager.speak("You can say exit to quit the program.")
 
-    def handle_exit(self):
+    def handle_exit(self, cmd_text=None):
         """Handle the 'exit' command."""
         print("Exiting the program...")
         self.file_manager.speak("Exiting the program")
         sys.exit(0)
+
+    def handle_volume_up(self, cmd_text=None):
+        """Handle the 'increase volume' command."""
+        self.os_manager.volume_up()
+
+    def handle_volume_down(self, cmd_text=None):
+        """Handle the 'decrease volume' command."""
+        self.os_manager.volume_down()
+
+    def handle_mute_toggle(self, cmd_text=None):
+        """Handle the 'mute/unmute volume' command."""
+        self.os_manager.mute_toggle()
+
+    def handle_maximize_volume(self, cmd_text=None):
+        """Handle the 'maximize volume' command."""
+        self.os_manager.maximize_volume()
+
+    def handle_set_volume(self, cmd_text):
+        """Handle the 'set volume' command."""
+        try:
+            # Extract number from command (e.g., "set volume to 50" -> 50)
+            match = re.search(r'\d+', cmd_text)
+            if match:
+                level = int(match.group())
+                self.os_manager.set_volume(level)
+            else:
+                print("No valid volume level found. Please say a number between 0 and 100.")
+                self.file_manager.speak("No valid volume level found. Please say a number between 0 and 100.")
+        except Exception as e:
+            print(f"Error setting volume: {e}")
+            self.file_manager.speak("Error setting volume.")
+
+    def handle_brightness_up(self, cmd_text=None):
+        """Handle the 'increase brightness' command."""
+        self.os_manager.brightness_up()
+
+    def handle_brightness_down(self, cmd_text=None):
+        """Handle the 'decrease brightness' command."""
+        self.os_manager.brightness_down()
+
+    def handle_maximize_brightness(self, cmd_text=None):
+        """Handle the 'maximize brightness' command."""
+        self.os_manager.maximize_brightness()
+
+    def handle_set_brightness(self, cmd_text):
+        """Handle the 'set brightness' command."""
+        try:
+            # Extract number from command (e.g., "set brightness to 60" -> 60)
+            match = re.search(r'\d+', cmd_text)
+            if match:
+                level = int(match.group())
+                self.os_manager.set_brightness(level)
+            else:
+                print("No valid brightness level found. Please say a number between 0 and 100.")
+                self.file_manager.speak("No valid brightness level found. Please say a number between 0 and 100.")
+        except Exception as e:
+            print(f"Error setting brightness: {e}")
+            self.file_manager.speak("Error setting brightness.")
+
+    def handle_switch_window(self, cmd_text=None):
+        """Handle the 'switch window' command."""
+        self.os_manager.switch_window()
+
+    def handle_minimize_all_windows(self, cmd_text=None):
+        """Handle the 'minimize all windows' command."""
+        self.os_manager.minimize_all_windows()
+
+    def handle_restore_all_windows(self, cmd_text=None):
+        """Handle the 'restore windows' command."""
+        self.os_manager.restore_all_windows()
+
+    def handle_maximize_current_window(self, cmd_text=None):
+        """Handle the 'maximize window' command."""
+        self.os_manager.maximize_current_window()
+
+    def handle_minimize_current_window(self, cmd_text=None):
+        """Handle the 'minimize window' command."""
+        self.os_manager.minimize_current_window()
+
+    def handle_close_current_window(self, cmd_text=None):
+        """Handle the 'close window' command."""
+        self.os_manager.close_current_window()
+
+    def handle_move_window_left(self, cmd_text=None):
+        """Handle the 'move window left' command."""
+        self.os_manager.move_window_left()
+
+    def handle_move_window_right(self, cmd_text=None):
+        """Handle the 'move window right' command."""
+        self.os_manager.move_window_right()
+
+    def handle_take_screenshot(self, cmd_text=None):
+        """Handle the 'take screenshot' command."""
+        self.os_manager.take_screenshot()
