@@ -9,60 +9,96 @@ class CommandHandler:
         self.file_manager = file_manager
         self.os_manager = os_manager
         self.voice_recognizer = voice_recognizer
+        # Expanded command mappings with synonyms and parameter requirements
         self.commands = {
-            "create folder": self.handle_create_folder,
-            "open folder or file": self.handle_open_folder_or_file,
-            "delete folder": self.handle_delete_folder,
-            "copy folder": self.handle_copy_folder,
-            "cut folder": self.handle_cut_folder,
-            "paste folder": self.handle_paste_folder,
-            "rename folder or file": self.handle_rename_folder_or_file,
-            "read text file": self.handle_read_text_file,
-            "list contents": self.handle_list_contents,
-            "get properties": self.handle_get_properties,
-            "list commands": self.handle_list_commands,
-            "exit": self.handle_exit,
-            "increase volume": self.handle_volume_up,
-            "decrease volume": self.handle_volume_down,
-            "mute volume": self.handle_mute_toggle,
-            "unmute volume": self.handle_mute_toggle,
-            "maximize volume": self.handle_maximize_volume,
-            "set volume": self.handle_set_volume,
-            "increase brightness": self.handle_brightness_up,
-            "decrease brightness": self.handle_brightness_down,
-            "maximize brightness": self.handle_maximize_brightness,
-            "set brightness": self.handle_set_brightness,
-            "switch window": self.handle_switch_window,
-            "minimize all windows": self.handle_minimize_all_windows,
-            "restore windows": self.handle_restore_all_windows,
-            "maximize window": self.handle_maximize_current_window,
-            "minimize window": self.handle_minimize_current_window,
-            "close window": self.handle_close_current_window,
-            "move window left": self.handle_move_window_left,
-            "move window right": self.handle_move_window_right,
-            "take screenshot": self.handle_take_screenshot
+            "create folder": {"handler": self.handle_create_folder, "params": None},
+            "open folder or file": {"handler": self.handle_open_folder_or_file, "params": None},
+            "delete folder": {"handler": self.handle_delete_folder, "params": None},
+            "copy folder": {"handler": self.handle_copy_folder, "params": None},
+            "cut folder": {"handler": self.handle_cut_folder, "params": None},
+            "paste folder": {"handler": self.handle_paste_folder, "params": None},
+            "rename folder or file": {"handler": self.handle_rename_folder_or_file, "params": None},
+            "read text file": {"handler": self.handle_read_text_file, "params": None},
+            "list contents": {"handler": self.handle_list_contents, "params": None},
+            "get properties": {"handler": self.handle_get_properties, "params": None},
+            "list commands": {"handler": self.handle_list_commands, "params": None},
+            "exit": {"handler": self.handle_exit, "params": None},
+            "increase volume": {"handler": self.handle_volume_up, "params": None},
+            "decrease volume": {"handler": self.handle_volume_down, "params": None},
+            "mute volume": {"handler": self.handle_mute_toggle, "params": None},
+            "unmute volume": {"handler": self.handle_mute_toggle, "params": None},
+            "maximize volume": {"handler": self.handle_maximize_volume, "params": None},
+            "set volume": {"handler": self.handle_set_volume, "params": "number"},
+            "increase brightness": {"handler": self.handle_brightness_up, "params": None},
+            "decrease brightness": {"handler": self.handle_brightness_down, "params": None},
+            "maximize brightness": {"handler": self.handle_maximize_brightness, "params": None},
+            "set brightness": {"handler": self.handle_set_brightness, "params": "number"},
+            "switch window": {"handler": self.handle_switch_window, "params": None},
+            "minimize all windows": {"handler": self.handle_minimize_all_windows, "params": None},
+            "restore windows": {"handler": self.handle_restore_all_windows, "params": None},
+            "maximize window": {"handler": self.handle_maximize_current_window, "params": None},
+            "minimize window": {"handler": self.handle_minimize_current_window, "params": None},
+            "close window": {"handler": self.handle_close_current_window, "params": None},
+            "move window left": {"handler": self.handle_move_window_left, "params": None},
+            "move window right": {"handler": self.handle_move_window_right, "params": None},
+            "take screenshot": {"handler": self.handle_take_screenshot, "params": None}
         }
-        # Context dictionary to store recent actions
+        # Synonyms for natural language commands
+        self.command_synonyms = {
+            "create folder": ["make folder", "new folder", "add folder"],
+            "open folder or file": ["open folder", "open file", "access folder", "access file"],
+            "delete folder": ["remove folder", "delete directory"],
+            "copy folder": ["duplicate folder"],
+            "cut folder": ["move folder"],
+            "paste folder": ["place folder"],
+            "rename folder or file": ["rename folder", "rename file", "change name"],
+            "read text file": ["read file", "open text", "read document"],
+            "list contents": ["show contents", "list files", "display directory"],
+            "get properties": ["show properties", "file info", "folder info"],
+            "list commands": ["help", "commands", "what can you do"],
+            "exit": ["quit", "stop program", "close"],
+            "increase volume": ["volume up", "turn volume up", "louder"],
+            "decrease volume": ["volume down", "turn volume down", "quieter"],
+            "mute volume": ["mute", "silence"],
+            "unmute volume": ["unmute"],
+            "maximize volume": ["max volume", "full volume"],
+            "set volume": ["set volume to", "turn volume to", "adjust volume to"],
+            "increase brightness": ["brightness up", "turn brightness up", "brighter"],
+            "decrease brightness": ["brightness down", "turn brightness down", "dimmer"],
+            "maximize brightness": ["max brightness", "full brightness"],
+            "set brightness": ["set brightness to", "turn brightness to", "adjust brightness to"],
+            "switch window": ["next window", "change window"],
+            "minimize all windows": ["show desktop", "minimize all"],
+            "restore windows": ["restore all windows", "bring back windows"],
+            "maximize window": ["maximize this window", "full screen"],
+            "minimize window": ["minimize this window"],
+            "close window": ["close this window", "close app"],
+            "move window left": ["snap window left"],
+            "move window right": ["snap window right"],
+            "take screenshot": ["screenshot", "capture screen"]
+        }
+        # Context dictionary to store recent actions and file type
         self.context = {
             "last_created_folder": None,  # Stores (directory, folder_name)
             "last_opened_item": None,    # Stores (directory, name)
+            "file_type": None            # Stores file type (e.g., '.txt', '.docx')
         }
 
     def get_command_list(self):
         """Return the list of available commands."""
         return list(self.commands.keys())
 
-    def execute_command(self, cmd_text):
-        """Execute commands with fuzzy matching, multiple commands, and context awareness."""
-        cmd_text = cmd_text.lower()
-        
-        # Check for stop command first (highest priority)
-        if "stop" in cmd_text:
-            print("Stopping current operation and returning to main menu")
-            self.file_manager.speak("Stopping. Ready for new command.")
-            return True
-
-        # Handle pronouns like "it" by replacing with last created/opened item
+    def preprocess_command(self, cmd_text):
+        """Preprocess the command text to remove polite phrases and normalize."""
+        cmd_text = cmd_text.lower().strip()
+        # Remove polite phrases
+        polite_phrases = [
+            r"can you please\s*", r"please\s*", r"could you\s*", r"would you\s*",
+            r"kindly\s*", r"i want to\s*", r"i would like to\s*"
+        ]
+        for phrase in polite_phrases:
+            cmd_text = re.sub(phrase, "", cmd_text)
+        # Replace pronouns with context
         if " it " in cmd_text or cmd_text.endswith(" it"):
             if self.context["last_created_folder"]:
                 directory, name = self.context["last_created_folder"]
@@ -70,9 +106,28 @@ class CommandHandler:
             elif self.context["last_opened_item"]:
                 directory, name = self.context["last_opened_item"]
                 cmd_text = cmd_text.replace(" it", f" {name}")
+        return cmd_text
 
-        # Split text on conjunctions like "and" to detect multiple commands
-        command_parts = re.split(r'\s+and\s+', cmd_text)
+    def extract_parameters(self, cmd_text, param_type):
+        """Extract parameters (e.g., numbers) from the command text."""
+        if param_type == "number":
+            match = re.search(r'\b(\d{1,3})\b', cmd_text)
+            return int(match.group(1)) if match else None
+        return None
+
+    def execute_command(self, cmd_text):
+        """Execute commands with hybrid processing (regex, fuzzy matching, synonyms)."""
+        cmd_text = self.preprocess_command(cmd_text)
+        
+        # Check for stop command first (highest priority)
+        if "stop" in cmd_text or "cancel" in cmd_text:
+            print("Stopping current operation and returning to main menu")
+            self.file_manager.speech.speak("Stopping. Ready for new command.")
+            return True
+
+        # Split text on conjunctions like "and" or "then" to detect multiple commands
+        command_parts = re.split(r'\s+(and|then)\s+', cmd_text)
+        command_parts = [part for part in command_parts if part not in ["and", "then"]]
         executed = False
 
         # Process each command part
@@ -82,63 +137,63 @@ class CommandHandler:
                 continue
 
             # Try exact matches
-            for cmd, handler in self.commands.items():
+            for cmd, info in self.commands.items():
                 if cmd in part:
                     print(f"Executing command: {cmd}")
-                    handler(part if cmd in ["set volume", "set brightness"] else None)
+                    params = self.extract_parameters(part, info["params"])
+                    if info["params"] and params is None:
+                        print(f"Missing required parameter for '{cmd}'")
+                        self.file_manager.speech.speak(f"Missing required parameter for {cmd}")
+                        continue
+                    info["handler"](part if info["params"] else None)
                     executed = True
-                    break  # Move to next command part after executing one
+                    break
 
-            # If no exact match, try fuzzy matching
+            # If no exact match, try synonyms
             if not executed:
-                for cmd, handler in self.commands.items():
+                for cmd, info in self.commands.items():
+                    for synonym in self.command_synonyms.get(cmd, []):
+                        if synonym in part:
+                            print(f"Executing synonym command: {cmd} (matched: {synonym})")
+                            params = self.extract_parameters(part, info["params"])
+                            if info["params"] and params is None:
+                                print(f"Missing required parameter for '{cmd}'")
+                                self.file_manager.speech.speak(f"Missing required parameter for {cmd}")
+                                continue
+                            info["handler"](part if info["params"] else None)
+                            executed = True
+                            break
+                    if executed:
+                        break
+
+            # If no exact or synonym match, try fuzzy matching
+            if not executed:
+                for cmd, info in self.commands.items():
                     if fuzz.ratio(cmd, part) > 80:  # 80% similarity threshold
                         print(f"Executing fuzzy-matched command: {cmd} (input: {part})")
-                        handler(part if cmd in ["set volume", "set brightness"] else None)
+                        params = self.extract_parameters(part, info["params"])
+                        if info["params"] and params is None:
+                            print(f"Missing required parameter for '{cmd}'")
+                            self.file_manager.speech.speak(f"Missing required parameter for {cmd}")
+                            continue
+                        info["handler"](part if info["params"] else None)
                         executed = True
+                        break
+                    # Check synonyms with fuzzy matching
+                    for synonym in self.command_synonyms.get(cmd, []):
+                        if fuzz.ratio(synonym, part) > 80:
+                            print(f"Executing fuzzy-matched synonym command: {cmd} (matched: {synonym}, input: {part})")
+                            params = self.extract_parameters(part, info["params"])
+                            if info["params"] and params is None:
+                                print(f"Missing required parameter for '{cmd}'")
+                                self.file_manager.speech.speak(f"Missing required parameter for {cmd}")
+                                continue
+                            info["handler"](part if info["params"] else None)
+                            executed = True
+                            break
+                    if executed:
                         break
 
-            # If no exact or fuzzy match, try partial matching
-            if not executed:
-                partial_matches = {
-                    "open folder": "open folder or file",
-                    "open file": "open folder or file",
-                    "rename folder": "rename folder or file",
-                    "rename file": "rename folder or file",
-                    "help": "list commands",
-                    "commands": "list commands",
-                    "what can you do": "list commands",
-                    "turn volume up": "increase volume",
-                    "turn volume down": "decrease volume",
-                    "mute": "mute volume",
-                    "unmute": "unmute volume",
-                    "max volume": "maximize volume",
-                    "turn brightness up": "increase brightness",
-                    "turn brightness down": "decrease brightness",
-                    "max brightness": "maximize brightness",
-                    "next window": "switch window",
-                    "show desktop": "minimize all windows",
-                    "restore all windows": "restore windows",
-                    "maximize this window": "maximize window",
-                    "minimize this window": "minimize window",
-                    "close this app": "close window",
-                    "screenshot": "take screenshot"
-                }
-                
-                for partial, full_cmd in partial_matches.items():
-                    if partial in part:
-                        print(f"Recognized partial command '{partial}' as '{full_cmd}'")
-                        self.commands[full_cmd](part if full_cmd in ["set volume", "set brightness"] else None)
-                        executed = True
-                        break
-                    # Try fuzzy matching for partial commands
-                    if fuzz.ratio(partial, part) > 80:
-                        print(f"Recognized fuzzy-matched partial command '{partial}' as '{full_cmd}' (input: {part})")
-                        self.commands[full_cmd](part if full_cmd in ["set volume", "set brightness"] else None)
-                        executed = True
-                        break
-
-        # Return True if at least one command was executed
         return executed
 
     def handle_create_folder(self, cmd_text=None):
@@ -157,7 +212,7 @@ class CommandHandler:
                     break
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
-            self.file_manager.speak("Returning to main menu.")
+            self.file_manager.speech.speak("Returning to main menu.")
 
     def handle_open_folder_or_file(self, cmd_text=None):
         """Handle the 'open folder or file' command."""
@@ -166,7 +221,7 @@ class CommandHandler:
             
             # Ask if user wants to list directory contents
             print("Do you want to list the files and folders in this directory? (yes/no)")
-            self.file_manager.speak("Do you want to list the files and folders in this directory? Say yes or no.")
+            self.file_manager.speech.speak("Do you want to list the files and folders in this directory? Say yes or no.")
             
             # Wait for response
             wait_time = 0
@@ -181,7 +236,7 @@ class CommandHandler:
                             break
                         elif "no" in response.lower() or "nope" in response.lower() or "stop" in response.lower():
                             print("Continuing without listing directory contents.")
-                            self.file_manager.speak("Continuing without listing directory contents.")
+                            self.file_manager.speech.speak("Continuing without listing directory contents.")
                             break
                 time.sleep(0.5)
                 wait_time += 0.5
@@ -189,7 +244,7 @@ class CommandHandler:
             # If no response in time
             if wait_time >= 5:
                 print("No response. Continuing without listing directory contents.")
-                self.file_manager.speak("Continuing without listing directory contents.")
+                self.file_manager.speech.speak("Continuing without listing directory contents.")
             
             # Continue with file selection in a loop until successful or user quits
             while True:
@@ -206,7 +261,7 @@ class CommandHandler:
                         if file_type.startswith("."):
                             break
                         print("Please include the dot (e.g., .txt).")
-                        self.file_manager.speak("Please include the dot, for example, dot text.")
+                        self.file_manager.speech.speak("Please include the dot, for example, dot text.")
                     
                     result = self.file_manager.open_folder_or_file(directory, name, file_type)
                     if result == True:
@@ -224,7 +279,7 @@ class CommandHandler:
                     if isinstance(result, tuple) and result[0] == "not_found":
                         # Item not found, ask again
                         print("Please try a different name.")
-                        self.file_manager.speak("Please try a different name.")
+                        self.file_manager.speech.speak("Please try a different name.")
                         # Continue the loop to ask again
                     else:
                         if result == True:
@@ -234,7 +289,7 @@ class CommandHandler:
                         break
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
-            self.file_manager.speak("Returning to main menu.")
+            self.file_manager.speech.speak("Returning to main menu.")
 
     def handle_delete_folder(self, cmd_text=None):
         """Handle the 'delete folder' command."""
@@ -243,7 +298,7 @@ class CommandHandler:
             
             # Ask if user wants to list directory contents
             print("Do you want to list the files and folders in this directory? (yes/no)")
-            self.file_manager.speak("Do you want to list the files and folders in this directory? Say yes or no.")
+            self.file_manager.speech.speak("Do you want to list the files and folders in this directory? Say yes or no.")
             
             # Wait for response
             wait_time = 0
@@ -258,7 +313,7 @@ class CommandHandler:
                             break
                         elif "no" in response.lower() or "nope" in response.lower() or "stop" in response.lower():
                             print("Continuing without listing directory contents.")
-                            self.file_manager.speak("Continuing without listing directory contents.")
+                            self.file_manager.speech.speak("Continuing without listing directory contents.")
                             break
                 time.sleep(0.5)
                 wait_time += 0.5
@@ -266,7 +321,7 @@ class CommandHandler:
             # If no response in time
             if wait_time >= 5:
                 print("No response. Continuing without listing directory contents.")
-                self.file_manager.speak("Continuing without listing directory contents.")
+                self.file_manager.speech.speak("Continuing without listing directory contents.")
             
             # Loop until successful deletion or user quits
             while True:
@@ -287,14 +342,14 @@ class CommandHandler:
                     if not os.path.isdir(folder_path):
                         # Folder not found, ask again
                         print("Please try a different folder name.")
-                        self.file_manager.speak("Please try a different folder name.")
+                        self.file_manager.speech.speak("Please try a different folder name.")
                         # Continue the loop to ask again
                     else:
                         # Some other error occurred
                         break
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
-            self.file_manager.speak("Returning to main menu.")
+            self.file_manager.speech.speak("Returning to main menu.")
 
     def handle_copy_folder(self, cmd_text=None):
         """Handle the 'copy folder' command."""
@@ -308,7 +363,7 @@ class CommandHandler:
                 self.context["last_created_folder"] = None
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
-            self.file_manager.speak("Returning to main menu.")
+            self.file_manager.speech.speak("Returning to main menu.")
 
     def handle_cut_folder(self, cmd_text=None):
         """Handle the 'cut folder' command."""
@@ -322,7 +377,7 @@ class CommandHandler:
                 self.context["last_created_folder"] = None
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
-            self.file_manager.speak("Returning to main menu.")
+            self.file_manager.speech.speak("Returning to main menu.")
 
     def handle_paste_folder(self, cmd_text=None):
         """Handle the 'paste folder' command."""
@@ -336,7 +391,7 @@ class CommandHandler:
                 self.context["last_opened_item"] = None
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
-            self.file_manager.speak("Returning to main menu.")
+            self.file_manager.speech.speak("Returning to main menu.")
 
     def handle_rename_folder_or_file(self, cmd_text=None):
         """Handle the 'rename folder or file' command."""
@@ -353,21 +408,128 @@ class CommandHandler:
                     self.context["last_opened_item"] = (directory, new_name)
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
-            self.file_manager.speak("Returning to main menu.")
+            self.file_manager.speech.speak("Returning to main menu.")
 
     def handle_read_text_file(self, cmd_text=None):
-        """Handle the 'read text file' command."""
+        """Handle the 'read text file' command with file type specification."""
         try:
+            # Prompt for file type (text or Word)
+            print("Is this a text file or Word file? (say 'text' or 'Word')")
+            self.file_manager.speech.speak("Is this a text file or Word file? Say text or Word.")
+            wait_time = 0
+            file_type = None
+            while wait_time < 5:  # Wait up to 5 seconds for response
+                if self.voice_recognizer:
+                    response = self.voice_recognizer.get_transcription()
+                    if response:
+                        print(f"You said: {response}")
+                        if "text" in response.lower():
+                            file_type = ".txt"
+                            break
+                        elif "word" in response.lower():
+                            file_type = ".docx"
+                            break
+                        else:
+                            print("Please say 'text' or 'Word'.")
+                            self.file_manager.speech.speak("Please say text or Word.")
+                            wait_time = 0  # Reset wait time on invalid response
+                    time.sleep(0.5)
+                    wait_time += 0.5
+            
+            if not file_type:
+                print("No valid file type provided. Defaulting to text file.")
+                self.file_manager.speech.speak("No valid file type provided. Defaulting to text file.")
+                file_type = ".txt"
+
+            # Store file type in context
+            self.context["file_type"] = file_type
+
             directory = self.file_manager.select_directory(self.voice_recognizer)
-            file_name = self.file_manager.get_folder_or_file_name("Enter file name to read: ", self.voice_recognizer)
-            result = self.file_manager.read_text_file(directory, file_name)
-            if result:
-                # Update context with read file
-                self.context["last_opened_item"] = (directory, file_name)
-                self.context["last_created_folder"] = None
+            
+            # Ask if user wants to list directory contents (filtered by file type)
+            print(f"Do you want to list the {file_type} files in this directory? (yes/no)")
+            self.file_manager.speech.speak(f"Do you want to list the {file_type} files in this directory? Say yes or no.")
+            
+            # Wait for response
+            wait_time = 0
+            while wait_time < 5:  # Wait up to 5 seconds for response
+                if self.voice_recognizer:
+                    response = self.voice_recognizer.get_transcription()
+                    if response:
+                        print(f"You said: {response}")
+                        if "yes" in response.lower() or "yeah" in response.lower() or "sure" in response.lower():
+                            # List directory contents filtered by file type
+                            self.file_manager.list_contents(directory, extension=file_type)
+                            break
+                        elif "no" in response.lower() or "nope" in response.lower() or "stop" in response.lower():
+                            print("Continuing without listing directory contents.")
+                            self.file_manager.speech.speak("Continuing without listing directory contents.")
+                            break
+                time.sleep(0.5)
+                wait_time += 0.5
+            
+            # If no response in time
+            if wait_time >= 5:
+                print("No response. Continuing without listing directory contents.")
+                self.file_manager.speech.speak("Continuing without listing directory contents.")
+            
+            # Continue with file selection in a loop until successful or user quits
+            while True:
+                name = self.file_manager.get_folder_or_file_name("Enter file name to read: ", self.voice_recognizer)
+                
+                # Try to read the file with the specified file type
+                result = self.file_manager.read_text_file(directory, name, file_type)
+                
+                # Handle results
+                if result == True:
+                    # Update context with read file
+                    self.context["last_opened_item"] = (directory, name)
+                    self.context["last_created_folder"] = None
+                    break
+                elif isinstance(result, tuple) and result[0] == "ambiguous":
+                    # Multiple files found, prompt for clarification
+                    possible_files = result[1]
+                    print(f"Multiple files found: {', '.join(possible_files)}")
+                    self.file_manager.speech.speak(f"Multiple files found. Please say text or Word to clarify.")
+                    wait_time = 0
+                    while wait_time < 5:
+                        if self.voice_recognizer:
+                            response = self.voice_recognizer.get_transcription()
+                            if response:
+                                print(f"You said: {response}")
+                                if "text" in response.lower():
+                                    file_type = ".txt"
+                                    break
+                                elif "word" in response.lower():
+                                    file_type = ".docx"
+                                    break
+                                else:
+                                    print("Please say 'text' or 'Word'.")
+                                    self.file_manager.speech.speak("Please say text or Word.")
+                                    wait_time = 0
+                            time.sleep(0.5)
+                            wait_time += 0.5
+                    
+                    if not file_type:
+                        print("No valid file type provided. Please try again.")
+                        self.file_manager.speech.speak("No valid file type provided. Please try again.")
+                        continue
+                    
+                    # Update context and retry with clarified file type
+                    self.context["file_type"] = file_type
+                    result = self.file_manager.read_text_file(directory, name, file_type)
+                    if result == True:
+                        self.context["last_opened_item"] = (directory, name)
+                        self.context["last_created_folder"] = None
+                        break
+                    elif result == False:
+                        continue  # Error, ask for another name
+                else:
+                    # File not found or other error, ask again
+                    continue
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
-            self.file_manager.speak("Returning to main menu.")
+            self.file_manager.speech.speak("Returning to main menu.")
 
     def handle_list_contents(self, cmd_text=None):
         """Handle the 'list contents' command."""
@@ -376,7 +538,7 @@ class CommandHandler:
             self.file_manager.list_contents(directory)
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
-            self.file_manager.speak("Returning to main menu.")
+            self.file_manager.speech.speak("Returning to main menu.")
 
     def handle_get_properties(self, cmd_text=None):
         """Handle the 'get properties' command."""
@@ -386,22 +548,22 @@ class CommandHandler:
             self.file_manager.get_properties(directory, name)
         except self.file_manager.ReturnToMain:
             print("Returning to main menu.")
-            self.file_manager.speak("Returning to main menu.")
+            self.file_manager.speech.speak("Returning to main menu.")
 
     def handle_list_commands(self, cmd_text=None):
         """Handle the 'list commands' command - lists all available commands."""
         print("Available commands are:")
-        self.file_manager.speak("Available commands are:")
+        self.file_manager.speech.speak("Available commands are:")
         for cmd in self.get_command_list():
             print(f"  • {cmd}")
-            self.file_manager.speak(cmd)
+            self.file_manager.speech.speak(cmd)
         print("You can say 'exit' to quit the program.")
-        self.file_manager.speak("You can say exit to quit the program.")
+        self.file_manager.speech.speak("You can say exit to quit the program.")
 
     def handle_exit(self, cmd_text=None):
         """Handle the 'exit' command."""
         print("Exiting the program...")
-        self.file_manager.speak("Exiting the program")
+        self.file_manager.speech.speak("Exiting the program")
         sys.exit(0)
 
     def handle_volume_up(self, cmd_text=None):
@@ -423,17 +585,15 @@ class CommandHandler:
     def handle_set_volume(self, cmd_text):
         """Handle the 'set volume' command."""
         try:
-            # Extract number from command (e.g., "set volume to 50" -> 50)
-            match = re.search(r'\d+', cmd_text)
-            if match:
-                level = int(match.group())
+            level = self.extract_parameters(cmd_text, "number")
+            if level is not None:
                 self.os_manager.set_volume(level)
             else:
                 print("No valid volume level found. Please say a number between 0 and 100.")
-                self.file_manager.speak("No valid volume level found. Please say a number between 0 and 100.")
+                self.os_manager.speech.speak("No valid volume level found. Please say a number between 0 and 100.")
         except Exception as e:
             print(f"Error setting volume: {e}")
-            self.file_manager.speak("Error setting volume.")
+            self.os_manager.speech.speak("Error setting volume.")
 
     def handle_brightness_up(self, cmd_text=None):
         """Handle the 'increase brightness' command."""
@@ -450,17 +610,15 @@ class CommandHandler:
     def handle_set_brightness(self, cmd_text):
         """Handle the 'set brightness' command."""
         try:
-            # Extract number from command (e.g., "set brightness to 60" -> 60)
-            match = re.search(r'\d+', cmd_text)
-            if match:
-                level = int(match.group())
+            level = self.extract_parameters(cmd_text, "number")
+            if level is not None:
                 self.os_manager.set_brightness(level)
             else:
                 print("No valid brightness level found. Please say a number between 0 and 100.")
-                self.file_manager.speak("No valid brightness level found. Please say a number between 0 and 100.")
+                self.os_manager.speech.speak("No valid brightness level found. Please say a number between 0 and 100.")
         except Exception as e:
             print(f"Error setting brightness: {e}")
-            self.file_manager.speak("Error setting brightness.")
+            self.os_manager.speech.speak("Error setting brightness.")
 
     def handle_switch_window(self, cmd_text=None):
         """Handle the 'switch window' command."""

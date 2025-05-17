@@ -10,7 +10,7 @@ DEVICE = "cpu"       # "cpu" or "cuda" (if you have a compatible NVIDIA GPU)
 COMPUTE_TYPE = "float32"  # Use "float32" for CPU compatibility
 
 SAMPLE_RATE = 16000  # Whisper models are trained on 16kHz audio
-AUDIO_CHUNK_DURATION_S = 0.5  # Process audio in chunks of this duration (seconds)
+AUDIO_CHUNK_DURATION_S = 1.0  # Increased from 0.5 to 1.0 to process larger chunks
 SILENCE_THRESHOLD_S = 1.0     # Seconds of silence to consider an utterance ended
 VAD_ENERGY_THRESHOLD = 0.005  # Energy threshold for VAD. Adjust based on your microphone and noise.
 MAX_AUDIO_BUFFER_S = 10       # Max duration of audio to keep in buffer (seconds)
@@ -56,6 +56,13 @@ class VoiceRecognizer:
 
         current_chunk = np.frombuffer(indata, dtype=np.float32).copy()
         
+        # Check buffer size to prevent overflow
+        if len(self.g_audio_buffer) >= int(MAX_AUDIO_BUFFER_S * SAMPLE_RATE * 0.9):  # 90% of max buffer
+            print("Warning: Audio buffer nearing capacity, clearing to prevent overflow.")
+            self.g_audio_buffer.clear()
+            self.g_is_speaking = False
+            self.g_silence_frames_count = 0
+
         # Simple energy-based VAD
         energy = np.sum(current_chunk**2) / len(current_chunk)
 
@@ -87,14 +94,14 @@ class VoiceRecognizer:
 
     def start_listening(self):
         """Start the audio input stream and return the block size."""
-        block_size = int(AUDIO_CHUNK_DURATION_S * SAMPLE_RATE)
+        block_size = int(AUDIO_CHUNK_DURATION_S * SAMPLE_RATE * 1.5)  # Increased block size by 1.5x
         stream = sd.InputStream(
             samplerate=SAMPLE_RATE,
             blocksize=block_size,
             channels=1,
             dtype='float32',
             callback=self.audio_processing_callback,
-            latency="high"
+            latency="low"  # Changed to low latency to reduce buffering
         )
         stream.start()
         return stream
