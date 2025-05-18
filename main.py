@@ -5,6 +5,7 @@ from speech import Speech
 from file_management import FileManager
 from os_management import OSManagement
 from command_handler import CommandHandler
+from auth.face_auth import FaceAuthenticator  # Import FaceAuthenticator
 
 def main():
     """Main function to run the voice-controlled file and system management assistant."""
@@ -15,6 +16,27 @@ def main():
     os_manager = OSManagement(speech)
     command_handler = CommandHandler(file_manager, os_manager, voice_recognizer)
     
+    # Initialize FaceAuthenticator with the Speech object
+    try:
+        face_auth = FaceAuthenticator(speech=speech)
+    except Exception as e:
+        print(f"Failed to initialize FaceAuthenticator: {e}")
+        speech.speak(f"Failed to initialize face authentication: {e}")
+        sys.exit(1)
+
+    # Perform face authentication
+    print("Please authenticate using face recognition...")
+    speech.speak("Please look at the camera to authenticate.")
+    recognized_name, status = face_auth.verify_user()
+    
+    if status != "success":
+        print(f"Authentication failed: {status}")
+        speech.speak(f"Authentication failed: {status}. Exiting program.")
+        sys.exit(1)
+    
+    print(f"Authentication successful! Welcome, {recognized_name}!")
+    speech.speak(f"Authentication successful! Welcome, {recognized_name}!")
+
     # Flag to track if we've already asked about listing commands
     asked_about_commands = False
 
@@ -57,7 +79,6 @@ def main():
                         speech.speak("Unknown command. Try saying list commands or use 'it'.")
                     # After that: Just make a sound to indicate error
                     else:
-                        # Play a short error sound (beep)
                         print("\a")  # Terminal bell sound
                         speech.speak("Unknown command")
                         
