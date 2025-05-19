@@ -3,28 +3,28 @@ from speech import Speech
 from file_management import FileManager
 from os_management import OSManagement
 from voice_recognition import VoiceRecognizer
-from auth.face_auth import FaceAuthenticator  # Correct import
+from auth.face_auth import FaceAuthenticator
 from command_handler import CommandHandler
 from general_command_handler import GeneralCommandHandler
 
 def main():
-    print("Main function started.") # New print
+    print("Main function started.")
     # Initialize components
     speech = Speech()
     speech.start_speaking()  # Enable speech output
-    file_manager = FileManager(speech)
     os_manager = OSManagement(speech)
+    file_manager = FileManager(speech, os_manager)  # Pass os_manager for window detection
     
-    print("Initializing VoiceRecognizer...") # New print
+    print("Initializing VoiceRecognizer...")
     voice_recognizer = VoiceRecognizer()
-    print("Calling start_listening...") # New print
+    print("Calling start_listening...")
     # Store the audio stream to keep it active
     audio_stream = voice_recognizer.start_listening()  # Start listening for voice commands
-    print("start_listening finished.") # New print
+    print("start_listening finished.")
 
-    print("Initializing FaceAuthenticator...") # New print
+    print("Initializing FaceAuthenticator...")
     face_auth = FaceAuthenticator()
-    print("FaceAuthenticator initialized.") # New print
+    print("FaceAuthenticator initialized.")
 
     # Perform face authentication
     print("Initiating face authentication...")
@@ -72,6 +72,9 @@ def main():
                 if not executed:
                     print("Command not recognized. Say 'list commands' for available commands.")
                     file_manager.speech.speak("Command not recognized. Say list commands for available commands.")
+                # Print current working directory for debugging
+                if command_handler.context.get("working_directory"):
+                    print(f"Current working directory: {command_handler.context['working_directory']}")
             time.sleep(0.5)
     except KeyboardInterrupt:
         print("\nProgram interrupted by user.")

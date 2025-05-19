@@ -8,6 +8,10 @@ import pyautogui
 import time
 import os
 from datetime import datetime
+import win32gui
+import win32con
+import win32process
+import win32api
 
 class OSManagement:
     def __init__(self, speech):
@@ -15,13 +19,14 @@ class OSManagement:
         self.system = platform.system()
         self.volume_interface = None
         self.brightness_interface = None
+        self.window_handles = []
+        self.current_window_index = 0
 
         if self.system != "Windows":
             print("This application only supports Windows.")
             self.speech.speak("This application only supports Windows.")
             return
 
-        # Initialize audio interface
         try:
             pythoncom.CoInitialize()
             devices = AudioUtilities.GetSpeakers()
@@ -31,7 +36,6 @@ class OSManagement:
             print(f"Error initializing Windows audio interface: {e}")
             self.speech.speak("Error initializing audio control. Using hotkey fallback.")
 
-        # Initialize brightness interface
         try:
             self.brightness_interface = wmi.WMI(namespace="wmi")
         except Exception as e:
@@ -39,16 +43,105 @@ class OSManagement:
             self.speech.speak("Error initializing brightness control. Using hotkey fallback.")
             self.brightness_interface = None
 
-        # Configure pyautogui for hotkey control
-        pyautogui.FAILSAFE = True  # Move mouse to upper-left corner to abort
-        pyautogui.PAUSE = 0.1  # Small pause between key presses
+        pyautogui.FAILSAFE = True
+        pyautogui.PAUSE = 0.1
+
+        self._update_window_handles()
+
+    def _update_window_handles(self):
+        """Enumerate all visible windows and store their handles, excluding the desktop."""
+        self.window_handles = []
+        def enum_windows_callback(hwnd, _):
+            class_name = win32gui.GetClassName(hwnd)
+            window_text = win32gui.GetWindowText(hwnd)
+            if (win32gui.IsWindowVisible(hwnd) and window_text and 
+                class_name not in ["Progman", "WorkerW"] and "Desktop" not in window_text):
+                self.window_handles.append(hwnd)
+        win32gui.EnumWindows(enum_windows_callback, None)
+        if self.current_window_index >= len(self.window_handles):
+            self.current_window_index = 0
+
+    def _restore_and_focus(self, hwnd):
+        """Restore a minimized window and force focus on it."""
+        try:
+            if win32gui.IsIconic(hwnd):
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                time.sleep(0.1)
+
+            target_thread_id = win32process.GetWindowThreadProcessId(hwnd)[0]
+            current_thread_id = win32api.GetCurrentThreadId()
+
+            if target_thread_id != current_thread_id:
+                win32process.AttachThreadInput(current_thread_id, target_thread_id, True)
+
+            win32gui.SetForegroundWindow(hwnd)
+
+            if target_thread_id != current_thread_id:
+                win32process.AttachThreadInput(current_thread_id, target_thread_id, False)
+
+            return True
+        except Exception as e:
+            print(f"Error restoring and focusing window: {e}")
+            return False
+
+    def get_active_explorer_path(self) -> Optional[str]:
+        """Get the path of the active File Explorer window."""
+        try:
+            # Get the foreground window
+            hwnd = win32gui.GetForegroundWindow()
+            if not hwnd:
+                return None
+
+            # Check if it's a File Explorer window
+            class_name = win32gui.GetClassName(hwnd)
+            if class_name not in ["CabinetWClass", "ExplorerWClass"]:  # File Explorer window classes
+                return None
+
+            # Use Shell to get the folder path
+            shell = win32com.client.Dispatch("Shell.Application")
+            for window in shell.Windows():
+                if window.hwnd == hwnd:
+                    path = window.LocationURL
+                    if path:
+                        # Convert file:// URL to local path
+                        path = path.replace("file:///", "").replace("/", "\\")
+                        path = os.path.normpath(path)
+                        if os.path.isdir(path):
+                            return path
+            return None
+        except Exception as e:
+            print(f"Error getting active File Explorer path: {e}")
+            self.speech.speak("Error detecting active folder.")
+            return None
+
+    def get_open_explorer_paths(self) -> list:
+        """Get paths of all open File Explorer windows (active or minimized)."""
+        paths = []
+        try:
+            shell = win32com.client.Dispatch("Shell.Application")
+            for window in shell.Windows():
+                try:
+                    path = window.LocationURL
+                    if path:
+                        # Convert file:// URL to local path
+                        path = path.replace("file:///", "").replace("/", "\\")
+                        path = os.path.normpath(path)
+                        if os.path.isdir(path) and path not in paths:
+                            paths.append(path)
+                except:
+                    continue
+            return paths
+        except Exception as e:
+            print(f"Error getting open File Explorer paths: {e}")
+            self.speech.speak("Error detecting open folders.")
+            return []
 
     def volume_up(self) -> bool:
         """Increase the system volume by 10%."""
         if self.volume_interface:
             try:
                 current_volume = self.volume_interface.GetMasterVolumeLevelScalar()
-                new_volume = min(1.0, current_volume + 0.1)  # Increase by 10%, cap at 100%
+                new_volume = min(1.0, current_volume + 0.1)
                 self.volume_interface.SetMasterVolumeLevelScalar(new_volume, None)
                 print(f"Volume increased to {int(new_volume * 100)}%")
                 self.speech.speak("Volume increased")
@@ -57,7 +150,6 @@ class OSManagement:
                 print(f"Error increasing volume with pycaw: {e}. Falling back to hotkey.")
                 self.speech.speak("Error with volume control. Trying hotkey.")
         
-        # Hotkey fallback
         try:
             pyautogui.press('volumeup')
             print("Volume increased via hotkey")
@@ -73,7 +165,7 @@ class OSManagement:
         if self.volume_interface:
             try:
                 current_volume = self.volume_interface.GetMasterVolumeLevelScalar()
-                new_volume = max(0.0, current_volume - 0.1)  # Decrease by 10%, floor at 0%
+                new_volume = max(0.0, current_volume - 0.1)
                 self.volume_interface.SetMasterVolumeLevelScalar(new_volume, None)
                 print(f"Volume decreased to {int(new_volume * 100)}%")
                 self.speech.speak("Volume decreased")
@@ -82,7 +174,6 @@ class OSManagement:
                 print(f"Error decreasing volume with pycaw: {e}. Falling back to hotkey.")
                 self.speech.speak("Error with volume control. Trying hotkey.")
         
-        # Hotkey fallback
         try:
             pyautogui.press('volumedown')
             print("Volume decreased via hotkey")
@@ -107,10 +198,9 @@ class OSManagement:
                 print(f"Error toggling mute with pycaw: {e}. Falling back to hotkey.")
                 self.speech.speak("Error with mute control. Trying hotkey.")
         
-        # Hotkey fallback
         try:
             pyautogui.press('volumemute')
-            status = "toggled"  # Exact mute state is harder to determine with hotkeys
+            status = "toggled"
             print(f"Volume mute {status} via hotkey")
             self.speech.speak("Volume mute toggled")
             return True
@@ -131,9 +221,8 @@ class OSManagement:
                 print(f"Error maximizing volume with pycaw: {e}. Falling back to hotkey.")
                 self.speech.speak("Error with volume control. Trying hotkey.")
         
-        # Hotkey fallback (simulate multiple volume up presses)
         try:
-            for _ in range(10):  # Press volume up multiple times to approximate max
+            for _ in range(10):
                 pyautogui.press('volumeup')
                 time.sleep(0.05)
             print("Volume maximized via hotkey")
@@ -162,16 +251,13 @@ class OSManagement:
                 print(f"Error setting volume with pycaw: {e}. Falling back to hotkey.")
                 self.speech.speak("Error with volume control. Trying hotkey.")
         
-        # Hotkey fallback (approximate by resetting to 0 then increasing)
         try:
-            # Mute and press volume down to approximate 0%
             pyautogui.press('volumemute')
             for _ in range(10):
                 pyautogui.press('volumedown')
                 time.sleep(0.05)
-            # Unmute and press volume up to reach desired level
             pyautogui.press('volumemute')
-            presses = int(level // 5)  # Roughly 5% per press
+            presses = int(level // 5)
             for _ in range(presses):
                 pyautogui.press('volumeup')
                 time.sleep(0.05)
@@ -189,7 +275,7 @@ class OSManagement:
             try:
                 monitor = self.brightness_interface.WmiMonitorBrightnessMethods()[0]
                 current_brightness = self.brightness_interface.WmiMonitorBrightness()[0].CurrentBrightness
-                new_brightness = min(100, current_brightness + 10)  # Increase by 10%, cap at 100%
+                new_brightness = min(100, current_brightness + 10)
                 monitor.WmiSetBrightness(new_brightness, 0)
                 print(f"Brightness increased to {new_brightness}%")
                 self.speech.speak("Brightness increased")
@@ -198,10 +284,8 @@ class OSManagement:
                 print(f"Error increasing brightness with wmi: {e}. Falling back to hotkey.")
                 self.speech.speak("Error with brightness control. Trying hotkey.")
         
-        # Hotkey fallback (assumes Fn + F6 or similar, may need customization)
-        # Note: Brightness keys vary by laptop (e.g., Fn+F5/F6 on Dell, Fn+F7/F8 on Lenovo)
         try:
-            pyautogui.hotkey('fn', 'f6')  # Example hotkey, adjust based on device
+            pyautogui.hotkey('fn', 'f6')
             print("Brightness increased via hotkey")
             self.speech.speak("Brightness increased")
             return True
@@ -216,7 +300,7 @@ class OSManagement:
             try:
                 monitor = self.brightness_interface.WmiMonitorBrightnessMethods()[0]
                 current_brightness = self.brightness_interface.WmiMonitorBrightness()[0].CurrentBrightness
-                new_brightness = max(0, current_brightness - 10)  # Decrease by 10%, floor at 0%
+                new_brightness = max(0, current_brightness - 10)
                 monitor.WmiSetBrightness(new_brightness, 0)
                 print(f"Brightness decreased to {new_brightness}%")
                 self.speech.speak("Brightness decreased")
@@ -225,9 +309,8 @@ class OSManagement:
                 print(f"Error decreasing brightness with wmi: {e}. Falling back to hotkey.")
                 self.speech.speak("Error with brightness control. Trying hotkey.")
         
-        # Hotkey fallback (assumes Fn + F5 or similar, may need customization)
         try:
-            pyautogui.hotkey('fn', 'f5')  # Example hotkey, adjust based on device
+            pyautogui.hotkey('fn', 'f5')
             print("Brightness decreased via hotkey")
             self.speech.speak("Brightness decreased")
             return True
@@ -249,10 +332,9 @@ class OSManagement:
                 print(f"Error maximizing brightness with wmi: {e}. Falling back to hotkey.")
                 self.speech.speak("Error with brightness control. Trying hotkey.")
         
-        # Hotkey fallback (simulate multiple brightness up presses)
         try:
-            for _ in range(10):  # Press brightness up multiple times to approximate max
-                pyautogui.hotkey('fn', 'f6')  # Adjust based on device
+            for _ in range(10):
+                pyautogui.hotkey('fn', 'f6')
                 time.sleep(0.05)
             print("Brightness maximized via hotkey")
             self.speech.speak("Brightness maximized")
@@ -280,16 +362,13 @@ class OSManagement:
                 print(f"Error setting brightness with wmi: {e}. Falling back to hotkey.")
                 self.speech.speak("Error with brightness control. Trying hotkey.")
         
-        # Hotkey fallback (approximate by resetting to 0 then increasing)
         try:
-            # Press brightness down to approximate 0%
             for _ in range(10):
-                pyautogui.hotkey('fn', 'f5')  # Adjust based on device
+                pyautogui.hotkey('fn', 'f5')
                 time.sleep(0.05)
-            # Press brightness up to reach desired level
-            presses = int(level // 5)  # Roughly 5% per press
+            presses = int(level // 5)
             for _ in range(presses):
-                pyautogui.hotkey('fn', 'f6')  # Adjust based on device
+                pyautogui.hotkey('fn', 'f6')
                 time.sleep(0.05)
             print(f"Brightness set to approximately {level}% via hotkey")
             self.speech.speak(f"Brightness set to {level} percent")
@@ -300,12 +379,65 @@ class OSManagement:
             return False
 
     def switch_window(self) -> bool:
-        """Switch to the next open window."""
+        """Switch to the next open window in the list of all windows."""
         try:
-            pyautogui.hotkey('alt', 'tab')
-            print("Switched to next window")
-            self.speech.speak("Window switched")
-            return True
+            self._update_window_handles()
+
+            if not self.window_handles:
+                print("No windows available to switch to.")
+                self.speech.speak("No windows available to switch to.")
+                return False
+
+            self.current_window_index = (self.current_window_index + 1) % len(self.window_handles)
+            hwnd = self.window_handles[self.current_window_index]
+
+            if self._restore_and_focus(hwnd):
+                window_title = win32gui.GetWindowText(hwnd)
+                print(f"Switched to window: {window_title} (Index: {self.current_window_index + 1}/{len(self.window_handles)})")
+                self.speech.speak("Window switched")
+                return True
+
+            print("Restoring and focusing failed. Falling back to Alt+Tab simulation.")
+            self.speech.speak("Error switching window. Trying hotkey method.")
+
+            pyautogui.keyUp('alt')
+            pyautogui.keyUp('tab')
+            time.sleep(0.1)
+
+            pyautogui.keyDown('alt')
+            time.sleep(0.2)
+
+            for i in range(self.current_window_index):
+                pyautogui.press('tab')
+                time.sleep(0.1)
+
+            pyautogui.keyUp('alt')
+
+            time.sleep(0.5)
+            active_hwnd = win32gui.GetForegroundWindow()
+            active_title = win32gui.GetWindowText(active_hwnd)
+            expected_title = win32gui.GetWindowText(hwnd)
+
+            if active_hwnd == hwnd:
+                print(f"Switched to window: {expected_title} (Index: {self.current_window_index + 1}/{len(self.window_handles)})")
+                self.speech.speak("Window switched")
+                return True
+            else:
+                print(f"Failed to switch to expected window. Current window: {active_title}")
+                self.speech.speak("Error switching to the correct window. Retrying.")
+
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                time.sleep(0.2)
+                if self._restore_and_focus(hwnd):
+                    window_title = win32gui.GetWindowText(hwnd)
+                    print(f"Retry successful. Switched to window: {window_title} (Index: {self.current_window_index + 1}/{len(self.window_handles)})")
+                    self.speech.speak("Window switched")
+                    return True
+                else:
+                    print("Retry failed. Could not switch to the target window.")
+                    self.speech.speak("Error switching window.")
+                    return False
+
         except Exception as e:
             print(f"Error switching window: {e}")
             self.speech.speak("Error switching window")
@@ -351,7 +483,6 @@ class OSManagement:
         """Minimize the current window."""
         try:
             pyautogui.hotkey('win', 'down')
-            # Windows+Down minimizes if the window is maximized or restored
             print("Current window minimized")
             self.speech.speak("Window minimized")
             return True
@@ -399,12 +530,10 @@ class OSManagement:
     def take_screenshot(self) -> bool:
         """Take a screenshot and save it to the Desktop."""
         try:
-            # Generate timestamped filename
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
             desktop_path = os.path.expanduser("~/Desktop")
             screenshot_path = os.path.join(desktop_path, f"screenshot_{timestamp}.png")
             
-            # Take and save screenshot
             screenshot = pyautogui.screenshot()
             screenshot.save(screenshot_path)
             print(f"Screenshot saved to {screenshot_path}")
@@ -413,4 +542,56 @@ class OSManagement:
         except Exception as e:
             print(f"Error taking screenshot: {e}")
             self.speech.speak("Error taking screenshot")
+            return False
+
+    def run_application(self, app_name: str) -> bool:
+        """Launch an application by name."""
+        try:
+            # Dictionary mapping common app names to their executable names or paths
+            app_map = {
+                "word": "winword.exe",
+                "excel": "excel.exe",
+                "powerpoint": "powerpnt.exe",
+                "notepad": "notepad.exe",
+                "google": "chrome.exe",  # Assuming Google Chrome
+                "chrome": "chrome.exe",
+                "vlc": "vlc.exe",
+                "firefox": "firefox.exe",
+                "edge": "msedge.exe",
+                "paint": "mspaint.exe",
+                "calculator": "calc.exe",
+                "file explorer": "explorer.exe"
+            }
+
+            # Normalize app_name to lowercase and remove spaces
+            app_name = app_name.lower().strip()
+            executable = app_map.get(app_name)
+
+            if executable:
+                # Try to launch the application using os.startfile
+                os.startfile(executable)
+                print(f"Launched application: {app_name}")
+                self.speech.speak(f"Opening {app_name}")
+                return True
+            else:
+                # Try launching the app directly (for apps in PATH or with registered names)
+                try:
+                    os.startfile(app_name)
+                    print(f"Launched application: {app_name}")
+                    self.speech.speak(f"Opening {app_name}")
+                    return True
+                except FileNotFoundError:
+                    # Try using shell execute as a fallback
+                    try:
+                        win32com.client.Dispatch("WScript.Shell").Run(app_name)
+                        print(f"Launched application via shell: {app_name}")
+                        self.speech.speak(f"Opening {app_name}")
+                        return True
+                    except Exception as e:
+                        print(f"Error launching application '{app_name}': Application not found.")
+                        self.speech.speak(f"Application {app_name} not found. Please check the name and try again.")
+                        return False
+        except Exception as e:
+            print(f"Error launching application '{app_name}': {e}")
+            self.speech.speak(f"Error opening {app_name}. Please try again.")
             return False

@@ -95,3 +95,11 @@ class OSCommandHandler:
     def handle_take_screenshot(self, cmd_text=None):
         """Handle the 'take screenshot' command."""
         self.os_manager.take_screenshot()
+
+    def handle_run_application(self, app_name):
+        """Handle the 'run application' command."""
+        if app_name:
+            self.os_manager.run_application(app_name)
+        else:
+            print("No application name provided. Please say the name of the application to run.")
+            self.os_manager.speech.speak("No application name provided. Please say the name of the application to run.")

@@ -184,6 +184,11 @@ class CommandHandler:
             "handler": "handle_take_screenshot",
             "handler_module": "os",
             "params": None
+        },
+        "run application": {
+            "handler": "handle_run_application",
+            "handler_module": "os",
+            "params": "app_name"
         }
     }
 
@@ -211,7 +216,7 @@ class CommandHandler:
         "decrease brightness": ["brightness down", "turn brightness down", "dimmer"],
         "maximize brightness": ["max brightness", "full brightness"],
         "set brightness": ["set brightness to", "turn brightness to", "adjust brightness to"],
-        "switch window": ["next window", "change window"],
+        "switch window": ["next window", "change window", "switch"],
         "minimize all windows": ["show desktop", "minimize all"],
         "restore windows": ["restore all windows", "bring back windows"],
         "maximize window": ["maximize this window", "full screen"],
@@ -219,7 +224,8 @@ class CommandHandler:
         "close window": ["close this window", "close app"],
         "move window left": ["snap window left"],
         "move window right": ["snap window right"],
-        "take screenshot": ["screenshot", "capture screen"]
+        "take screenshot": ["screenshot", "capture screen"],
+        "run application": ["run", "open", "launch", "start"]
     }
 
     def __init__(self, file_manager, os_manager, voice_recognizer=None):
@@ -262,10 +268,14 @@ class CommandHandler:
         return cmd_text
 
     def extract_parameters(self, cmd_text, param_type):
-        """Extract parameters (e.g., numbers) from the command text."""
+        """Extract parameters (e.g., numbers, app_name) from the command text."""
         if param_type == "number":
             match = re.search(r'\b(\d{1,3})\b', cmd_text)
             return int(match.group(1)) if match else None
+        elif param_type == "app_name":
+            # Extract the application name following 'run', 'open', 'launch', or 'start'
+            match = re.search(r'(?:run|open|launch|start)\s+(.+?)(?:\s|$)', cmd_text, re.IGNORECASE)
+            return match.group(1).strip() if match else None
         return None
 
     def execute_command(self, cmd_text):
@@ -344,7 +354,7 @@ class CommandHandler:
             handler_func(cmd_text if info["params"] else None, self.context)
         elif handler_module == "os":
             handler_func = getattr(self.os_handler, handler_name)
-            handler_func(cmd_text if info["params"] else None)
+            handler_func(cmd_text if info["params"] else params)
         elif handler_module == "general":
             handler_func = getattr(self.general_handler, handler_name)
             handler_func(cmd_text if info["params"] else None)
