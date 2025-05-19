@@ -9,6 +9,9 @@ from general_command_handler import GeneralCommandHandler
 
 def main():
     print("Main function started.")
+    # Flag to skip face authentication for testing
+    SKIP_FACE_AUTH = True  # Set to False to re-enable face authentication
+
     # Initialize components
     speech = Speech()
     speech.start_speaking()  # Enable speech output
@@ -22,38 +25,42 @@ def main():
     audio_stream = voice_recognizer.start_listening()  # Start listening for voice commands
     print("start_listening finished.")
 
-    print("Initializing FaceAuthenticator...")
-    face_auth = FaceAuthenticator()
-    print("FaceAuthenticator initialized.")
+    if not SKIP_FACE_AUTH:
+        print("Initializing FaceAuthenticator...")
+        face_auth = FaceAuthenticator()
+        print("FaceAuthenticator initialized.")
 
-    # Perform face authentication
-    print("Initiating face authentication...")
-    file_manager.speech.speak("Initiating face authentication. Please look at the camera.")
-    
-    authenticated = False
-    max_attempts = 3
-    attempt = 1
-    
-    while attempt <= max_attempts:
-        print(f"Attempt {attempt} of {max_attempts}...")
-        recognized_name, status = face_auth.authenticate()
-        if recognized_name:
-            print(f"Face authentication successful! Welcome, {recognized_name}!")
-            file_manager.speech.speak(f"Face authentication successful! Welcome, {recognized_name}!")
-            authenticated = True
-            break
-        else:
-            print(f"Face authentication failed. Status: {status}")
-            file_manager.speech.speak("Face authentication failed. Please try again.")
-            attempt += 1
-            time.sleep(2)
-    
-    if not authenticated:
-        print("Maximum authentication attempts reached. Exiting program.")
-        file_manager.speech.speak("Maximum authentication attempts reached. Exiting program.")
-        return
+        # Perform face authentication
+        print("Initiating face authentication...")
+        file_manager.speech.speak("Initiating face authentication. Please look at the camera.")
+        
+        authenticated = False
+        max_attempts = 3
+        attempt = 1
+        
+        while attempt <= max_attempts:
+            print(f"Attempt {attempt} of {max_attempts}...")
+            recognized_name, status = face_auth.authenticate()
+            if recognized_name:
+                print(f"Face authentication successful! Welcome, {recognized_name}!")
+                file_manager.speech.speak(f"Face authentication successful! Welcome, {recognized_name}!")
+                authenticated = True
+                break
+            else:
+                print(f"Face authentication failed. Status: {status}")
+                file_manager.speech.speak("Face authentication failed. Please try again.")
+                attempt += 1
+                time.sleep(2)
+        
+        if not authenticated:
+            print("Maximum authentication attempts reached. Exiting program.")
+            file_manager.speech.speak("Maximum authentication attempts reached. Exiting program.")
+            return
+    else:
+        print("Face authentication skipped for testing.")
+        file_manager.speech.speak("Face authentication skipped for testing.")
 
-    # Initialize CommandHandler after authentication
+    # Initialize CommandHandler after authentication (or skipping it)
     command_handler = CommandHandler(file_manager, os_manager, voice_recognizer)
     
     # Initialize GeneralCommandHandler

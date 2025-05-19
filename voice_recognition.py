@@ -9,7 +9,7 @@ import torch # For Silero VAD
 
 # --- Configuration ---
 # Whisper Model Settings
-MODEL_SIZE = "base"  # Options: "tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3".
+MODEL_SIZE = "small"  # Options: "tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3".
                      # "small" or "medium" offer a good balance of speed and accuracy if "base" isn't enough.
                      # Larger models are more accurate but slower.
 DEVICE = "cpu"       # "cpu" or "cuda" (if you have an NVIDIA GPU and CUDA toolkit installed).
@@ -22,7 +22,7 @@ COMPUTE_TYPE = "float32" # Default for CPU.
 
 # Audio Stream Settings
 SAMPLE_RATE = 16000  # Whisper models are trained on 16kHz audio. Silero VAD also works well with this.
-STREAM_BLOCK_SIZE_MS = 48  # Block size for sounddevice stream callback in milliseconds.
+STREAM_BLOCK_SIZE_MS = 32  # Block size for sounddevice stream callback in milliseconds.
                            # Silero VAD works with chunks like 256, 512, 768, 1024, 1536 samples.
                            # 32ms * 16kHz = 512 samples. 48ms * 16kHz = 768 samples.
                            # This value (e.g. 32, 48, 64) will be converted to frames.
@@ -63,19 +63,21 @@ class VoiceRecognizer:
             sys.exit(1)
 
         # Initialize Silero VAD
-        print("Loading Silero VAD model...")
+        print("Loading Silero VAD model from local directory...")
         try:
-            # Silero VAD model will be downloaded automatically if not found in cache.
-            self.vad_model, self.vad_utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
-                                                            model='silero_vad',
-                                                            force_reload=False, # Set to True once to update, then False
-                                                            onnx=True) # Use ONNX for potentially faster CPU inference if available
-                                                                       # Set to False if ONNX version causes issues or for GPU VAD.
-            (self.vad_get_speech_timestamps, _, _, _, _) = self.vad_utils # Unpack utils
-            print("Silero VAD model loaded successfully.")
+            # Use the local path to the silero-vad directory
+            local_vad_path = r"C:\Users\LENOVO\Desktop\FYP\final\silero-vad-master\silero-vad-master"
+            self.vad_model, self.vad_utils = torch.hub.load(repo_or_dir=local_vad_path,
+                                                             model='silero_vad',
+                                                             source='local',  # Specify that we're using a local directory
+                                                             force_reload=False,  # Set to False to avoid unnecessary reloads
+                                                             onnx=True)  # Use ONNX for potentially faster CPU inference
+            (self.vad_get_speech_timestamps, _, _, _, _) = self.vad_utils  # Unpack utils
+            print("Silero VAD model loaded successfully from local directory.")
         except Exception as e:
             print(f"Error loading Silero VAD model: {e}")
-            print("Ensure you have an internet connection for the first download.")
+            print("Ensure the local path contains the necessary model files (e.g., silero_vad.onnx or silero_vad.jit).")
+            print("If issues persist, try setting onnx=False or verify the directory structure.")
             sys.exit(1)
 
         # Transcription queue and worker thread

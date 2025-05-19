@@ -12,6 +12,7 @@ import win32gui
 import win32con
 import win32process
 import win32api
+import win32com.client
 
 class OSManagement:
     def __init__(self, speech):
@@ -87,23 +88,19 @@ class OSManagement:
     def get_active_explorer_path(self) -> Optional[str]:
         """Get the path of the active File Explorer window."""
         try:
-            # Get the foreground window
             hwnd = win32gui.GetForegroundWindow()
             if not hwnd:
                 return None
 
-            # Check if it's a File Explorer window
             class_name = win32gui.GetClassName(hwnd)
-            if class_name not in ["CabinetWClass", "ExplorerWClass"]:  # File Explorer window classes
+            if class_name not in ["CabinetWClass", "ExplorerWClass"]:
                 return None
 
-            # Use Shell to get the folder path
             shell = win32com.client.Dispatch("Shell.Application")
             for window in shell.Windows():
                 if window.hwnd == hwnd:
                     path = window.LocationURL
                     if path:
-                        # Convert file:// URL to local path
                         path = path.replace("file:///", "").replace("/", "\\")
                         path = os.path.normpath(path)
                         if os.path.isdir(path):
@@ -123,7 +120,6 @@ class OSManagement:
                 try:
                     path = window.LocationURL
                     if path:
-                        # Convert file:// URL to local path
                         path = path.replace("file:///", "").replace("/", "\\")
                         path = os.path.normpath(path)
                         if os.path.isdir(path) and path not in paths:
@@ -379,8 +375,9 @@ class OSManagement:
             return False
 
     def switch_window(self) -> bool:
-        """Switch to the next open window in the list of all windows."""
+        """Switch to the next open window using Alt+Tab simulation."""
         try:
+            # Update the list of window handles to ensure it's current
             self._update_window_handles()
 
             if not self.window_handles:
@@ -388,48 +385,43 @@ class OSManagement:
                 self.speech.speak("No windows available to switch to.")
                 return False
 
+            # Increment the window index to select the next window
             self.current_window_index = (self.current_window_index + 1) % len(self.window_handles)
-            hwnd = self.window_handles[self.current_window_index]
 
-            if self._restore_and_focus(hwnd):
-                window_title = win32gui.GetWindowText(hwnd)
-                print(f"Switched to window: {window_title} (Index: {self.current_window_index + 1}/{len(self.window_handles)})")
-                self.speech.speak("Window switched")
-                return True
-
-            print("Restoring and focusing failed. Falling back to Alt+Tab simulation.")
-            self.speech.speak("Error switching window. Trying hotkey method.")
-
-            pyautogui.keyUp('alt')
-            pyautogui.keyUp('tab')
-            time.sleep(0.1)
+            # Simulate Alt+Tab to cycle to the desired window
+            pyautogui.keyUp('alt')  # Ensure Alt is not stuck
+            pyautogui.keyUp('tab')  # Ensure Tab is not stuck
+            time.sleep(0.1)  # Small delay to ensure keys are released
 
             pyautogui.keyDown('alt')
-            time.sleep(0.2)
+            time.sleep(0.2)  # Hold Alt briefly to open the window switcher
 
-            for i in range(self.current_window_index):
+            # Press Tab the required number of times to reach the target window
+            for _ in range(self.current_window_index):
                 pyautogui.press('tab')
-                time.sleep(0.1)
+                time.sleep(0.1)  # Small delay between Tab presses for reliability
 
-            pyautogui.keyUp('alt')
+            pyautogui.keyUp('alt')  # Release Alt to select the window
+            time.sleep(0.5)  # Allow the window switch to complete
 
-            time.sleep(0.5)
+            # Verify the active window
             active_hwnd = win32gui.GetForegroundWindow()
+            target_hwnd = self.window_handles[self.current_window_index]
             active_title = win32gui.GetWindowText(active_hwnd)
-            expected_title = win32gui.GetWindowText(hwnd)
 
-            if active_hwnd == hwnd:
-                print(f"Switched to window: {expected_title} (Index: {self.current_window_index + 1}/{len(self.window_handles)})")
+            if active_hwnd == target_hwnd:
+                print(f"Switched to window: {active_title} (Index: {self.current_window_index + 1}/{len(self.window_handles)})")
                 self.speech.speak("Window switched")
                 return True
             else:
-                print(f"Failed to switch to expected window. Current window: {active_title}")
-                self.speech.speak("Error switching to the correct window. Retrying.")
+                print(f"Failed to switch to expected window. Current window: {active_title}. Retrying with direct focus.")
+                self.speech.speak("Error switching window. Retrying.")
 
-                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                # Fallback: Try direct focus if Alt+Tab didn't work
+                win32gui.ShowWindow(target_hwnd, win32con.SW_RESTORE)
                 time.sleep(0.2)
-                if self._restore_and_focus(hwnd):
-                    window_title = win32gui.GetWindowText(hwnd)
+                if self._restore_and_focus(target_hwnd):
+                    window_title = win32gui.GetWindowText(target_hwnd)
                     print(f"Retry successful. Switched to window: {window_title} (Index: {self.current_window_index + 1}/{len(self.window_handles)})")
                     self.speech.speak("Window switched")
                     return True
@@ -545,52 +537,43 @@ class OSManagement:
             return False
 
     def run_application(self, app_name: str) -> bool:
-        """Launch an application by name."""
+        """Launch an application by searching in the Windows Start menu."""
+        if not app_name:
+            print("No application name provided.")
+            self.speech.speak("Please provide an application name.")
+            return False
+
         try:
-            # Dictionary mapping common app names to their executable names or paths
-            app_map = {
-                "word": "winword.exe",
-                "excel": "excel.exe",
-                "powerpoint": "powerpnt.exe",
-                "notepad": "notepad.exe",
-                "google": "chrome.exe",  # Assuming Google Chrome
-                "chrome": "chrome.exe",
-                "vlc": "vlc.exe",
-                "firefox": "firefox.exe",
-                "edge": "msedge.exe",
-                "paint": "mspaint.exe",
-                "calculator": "calc.exe",
-                "file explorer": "explorer.exe"
-            }
+            # Clean the app_name to remove 'run' prefix and unwanted characters
+            app_name = app_name.strip().lower()
+            if app_name.startswith("run "):
+                app_name = app_name[4:].strip()  # Remove 'run ' prefix
+            elif app_name == "run":
+                print("No application name provided after 'run'.")
+                self.speech.speak("Please provide an application name after run.")
+                return False
 
-            # Normalize app_name to lowercase and remove spaces
-            app_name = app_name.lower().strip()
-            executable = app_map.get(app_name)
+            if not app_name:
+                print("Application name is empty after cleaning.")
+                self.speech.speak("No valid application name provided.")
+                return False
 
-            if executable:
-                # Try to launch the application using os.startfile
-                os.startfile(executable)
-                print(f"Launched application: {app_name}")
-                self.speech.speak(f"Opening {app_name}")
-                return True
-            else:
-                # Try launching the app directly (for apps in PATH or with registered names)
-                try:
-                    os.startfile(app_name)
-                    print(f"Launched application: {app_name}")
-                    self.speech.speak(f"Opening {app_name}")
-                    return True
-                except FileNotFoundError:
-                    # Try using shell execute as a fallback
-                    try:
-                        win32com.client.Dispatch("WScript.Shell").Run(app_name)
-                        print(f"Launched application via shell: {app_name}")
-                        self.speech.speak(f"Opening {app_name}")
-                        return True
-                    except Exception as e:
-                        print(f"Error launching application '{app_name}': Application not found.")
-                        self.speech.speak(f"Application {app_name} not found. Please check the name and try again.")
-                        return False
+            # Simulate Windows key press to open Start menu
+            pyautogui.press('win')
+            time.sleep(0.5)  # Wait for Start menu to open
+
+            # Type the application name
+            pyautogui.write(app_name, interval=0.05)
+            time.sleep(1)  # Wait for search results to populate
+
+            # Press Enter to launch the first matching application
+            pyautogui.press('enter')
+            time.sleep(0.5)  # Allow time for the application to start
+
+            print(f"Attempted to launch application: {app_name} via Start menu search")
+            self.speech.speak(f"Opening {app_name}")
+            return True
+
         except Exception as e:
             print(f"Error launching application '{app_name}': {e}")
             self.speech.speak(f"Error opening {app_name}. Please try again.")
