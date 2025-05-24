@@ -26,7 +26,7 @@ class OSCommandHandler:
             match = re.search(r'\b(\d{1,3})\b', cmd_text)
             level = int(match.group(1)) if match else None
             if level is not None:
-                self.os_manager.set_volume(level)
+                self.os_manager.set_volume(str(level))
             else:
                 print("No valid volume level found. Please say a number between 0 and 100.")
                 self.os_manager.speech.speak("No valid volume level found. Please say a number between 0 and 100.")
@@ -52,7 +52,7 @@ class OSCommandHandler:
             match = re.search(r'\b(\d{1,3})\b', cmd_text)
             level = int(match.group(1)) if match else None
             if level is not None:
-                self.os_manager.set_brightness(level)
+                self.os_manager.set_brightness(str(level))
             else:
                 print("No valid brightness level found. Please say a number between 0 and 100.")
                 self.os_manager.speech.speak("No valid brightness level found. Please say a number between 0 and 100.")

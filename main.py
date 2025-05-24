@@ -16,14 +16,14 @@ def main():
     speech = Speech()
     speech.start_speaking()  # Enable speech output
     os_manager = OSManagement(speech)
-    file_manager = FileManager(speech, os_manager)  # Pass os_manager for window detection
-    
     print("Initializing VoiceRecognizer...")
     voice_recognizer = VoiceRecognizer()
     print("Calling start_listening...")
-    # Store the audio stream to keep it active
     audio_stream = voice_recognizer.start_listening()  # Start listening for voice commands
     print("start_listening finished.")
+
+    # Initialize FileManager before face authentication
+    file_manager = FileManager(speech, os_manager, voice_recognizer)
 
     if not SKIP_FACE_AUTH:
         print("Initializing FaceAuthenticator...")
