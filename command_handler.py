@@ -11,9 +11,22 @@ import win32con
 import webbrowser
 import os
 import pickle
+import logging
+import subprocess
+import sys
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+
+# Vision mode keywords for offline priority
+VISION_MODE_KEYWORDS = [
+    "go vision", 
+    "vision mode", 
+    "activate vision", 
+    "hand control",
+    "gesture control",
+    "visual input"
+]
 
 class CommandHandler:
     """
@@ -445,6 +458,96 @@ class CommandHandler:
             "handler_module": "general",
             "params": "nth_email"
         },
+        "copy": {
+            "handler": "handle_copy",
+            "handler_module": "os",
+            "params": None
+        },
+        "paste": {
+            "handler": "handle_paste",
+            "handler_module": "os",
+            "params": None
+        },
+        "read clipboard": {
+            "handler": "handle_read_clipboard",
+            "handler_module": "os",
+            "params": None
+        },
+        "select all": {
+            "handler": "handle_select_all",
+            "handler_module": "os",
+            "params": None
+        },
+        "open word": {
+            "handler": "handle_open_word",
+            "handler_module": "os",
+            "params": None
+        },
+        "write essay": {
+            "handler": "handle_write_essay",
+            "handler_module": "general",
+            "params": "topic"
+        },
+        "save file": {
+            "handler": "handle_save_file",
+            "handler_module": "os",
+            "params": "filename"
+        },
+        "remove this": {
+            "handler": "handle_remove_selection",
+            "handler_module": "os",
+            "params": None
+        },
+        "undo": {
+            "handler": "handle_undo_action",
+            "handler_module": "os",
+            "params": None
+        },
+        "redo": {
+            "handler": "handle_redo_action",
+            "handler_module": "os",
+            "params": None
+        },
+        "send to chatgpt": {
+            "handler": "handle_send_to_chatgpt",
+            "handler_module": "general",
+            "params": "query"
+        },
+        "start dictation": {
+            "handler": "handle_noop",  # This command is handled in main.py
+            "handler_module": "general",
+            "params": None
+        },
+        "stop dictation": {
+            "handler": "handle_noop",  # This command is handled in main.py
+            "handler_module": "general",
+            "params": None
+        },
+        "lock computer": {
+            "handler": "handle_lock_computer",
+            "handler_module": "os",
+            "params": None
+        },
+        "take a note": {
+            "handler": "handle_noop",  # This command is handled in main.py
+            "handler_module": "general",
+            "params": None
+        },
+        "read last note": {
+            "handler": "handle_read_last_note",
+            "handler_module": "general",
+            "params": None
+        },
+        "show all notes": {
+            "handler": "handle_show_all_notes",
+            "handler_module": "general",
+            "params": None
+        },
+        "summarize clipboard": {
+            "handler": "handle_summarize_clipboard",
+            "handler_module": "general",
+            "params": None
+        },
     }
 
     # Synonyms for natural language commands
@@ -552,6 +655,24 @@ class CommandHandler:
         "read oldest email": ["read first email", "read very first email", "read bottom email"],
         "read nth most recent email": ["read {n}th most recent email", "read {n} most recent email", "read {n}th latest email", "read {n} latest email"],
         "read nth oldest email": ["read {n}th oldest email", "read {n} oldest email", "read {n}th first email", "read {n} first email"],
+        "copy": ["copy that", "copy this"],
+        "paste": ["paste that", "paste this", "paste here"],
+        "read clipboard": ["what's on the clipboard", "read my clipboard", "tell me what's on the clipboard"],
+        "select all": ["select everything"],
+        "open word": ["launch word", "start word", "microsoft word"],
+        "write essay": ["write an essay on", "write about", "compose an essay on"],
+        "save file": ["save this file", "save it", "save the file"],
+        "remove this": ["delete this", "remove selection", "delete selection", "clear selection"],
+        "undo": ["undo that", "control z", "that was a mistake", "go back"],
+        "redo": ["redo that", "control y"],
+        "send to chatgpt": ["chatgpt", "ask chatgpt", "tell chatgpt", "on chatgpt"],
+        "start dictation": ["start dictation mode", "begin dictation", "dictation on"],
+        "stop dictation": ["stop dictation mode", "end dictation", "dictation off"],
+        "take a note": ["add a note", "new note", "write a note", "note this down"],
+        "read last note": ["what was my last note", "read the last note"],
+        "show all notes": ["open my notes", "show notes", "view all notes"],
+        "lock computer": ["lock my computer", "lock the screen", "lock screen", "lock pc"],
+        "summarize clipboard": ["summarize this", "summarize the clipboard", "give me a summary", "summarise", "summary"],
     }
 
     ORDINAL_WORDS = {
@@ -566,6 +687,7 @@ class CommandHandler:
         self.os_manager = os_manager
         self.voice_recognizer = voice_recognizer
         self.speech = speech
+        self.hybrid_processor = None # Will be set from main.py
         # Initialize specific command handlers
         self.file_handler = FileCommandHandler(file_manager, voice_recognizer)
         self.os_handler = OSCommandHandler(os_manager)
@@ -891,17 +1013,50 @@ class CommandHandler:
             return cmd_name, params
         # --- END PATTERN MATCHING ---
         
-        # Direct match
-        for command in self.COMMANDS:
-            if cmd_text.startswith(command):
-                cmd_name = command
-                print(f"Direct match found: '{command}' for input '{cmd_text}'")
-                break
+        # --- FIX: More flexible matching for commands with parameters ---
+        # This helps catch commands like "on chat gpt write a poem" where the trigger has variations.
+        # This block is now placed before the direct/synonym matching.
+        text_lower = cmd_text.lower().strip()
+        # Define commands that often start with a trigger phrase.
+
+        # --- FIX: Prioritize suffix commands to override prefixes ---
+        # If a command ends with a target ("on gpt" or "on word"), identify it first.
+        if any(text_lower.endswith(" " + trigger) for trigger in ["gpt", "chat gpt", "chatgpt", "on gpt", "on chat gpt", "on chatgpt"]):
+            cmd_name = "send to chatgpt"
+        elif any(text_lower.endswith(" " + trigger) for trigger in ["word", "on word", "in word"]):
+            cmd_name = "write essay"
+        
+        prefix_commands = {
+            "send to chatgpt": ["ask chatgpt", "tell chatgpt", "on chatgpt", "chatgpt", "chat gpt", "on chat gpt"],
+            "write essay": ["write an essay on", "write about", "compose an essay on", "write a"],
+            "search": ["search for", "google", "look up", "find"],
+            "play on youtube": ["play on youtube", "youtube", "play video", "play song", "play music on youtube"],
+            "open": ["open", "launch", "start", "go to"],
+        }
+
+        # Only check for prefixes if a more specific suffix command wasn't already found
+        if cmd_name is None:
+            # Sort by length to match longer triggers first (e.g., "play on youtube" before "youtube")
+            for command, triggers in prefix_commands.items():
+                # Sort triggers by length, longest first, to avoid partial matches (e.g., "chat gpt" before "gpt")
+                triggers.sort(key=len, reverse=True)
+                for trigger in triggers:
+                    if text_lower.startswith(trigger + ' '):
+                        cmd_name = command
+                        break # Found a prefix match
+                if cmd_name:
+                    break # Stop after finding the first matching command group
+        if cmd_name is None:
+            for command in self.COMMANDS:
+                if f" {cmd_text} ".startswith(f" {command} "): # Use word boundaries
+                    cmd_name = command
+                    print(f"Direct match found: '{command}' for input '{cmd_text}'")
+                    break
         # Synonym match
         if not cmd_name:
             for command, synonyms in self.COMMAND_SYNONYMS.items():
                 for synonym in synonyms:
-                    if cmd_text.startswith(synonym):
+                    if f" {cmd_text} ".startswith(f" {synonym} "): # Use word boundaries
                         cmd_name = command
                         print(f"Synonym match found: '{command}' via synonym '{synonym}' for input '{cmd_text}'")
                         break
@@ -1126,8 +1281,54 @@ class CommandHandler:
                 param = match.group(1).strip()
                 print(f"Extracted query: {param}")
                 return param
+            
+            # --- FIX: More flexible ChatGPT query extraction ---
+            # This handles cases like "ask chatgpt hello" and "hello chatgpt".
+            # It also supports "chat gpt" with a space and just "gpt" as a suffix.
+            triggers = ["ask chatgpt", "tell chatgpt", "on chatgpt", "send to chatgpt", "chat gpt", "on gpt", "chatgpt", "gpt"]
+            text_lower = cmd_text.lower().strip()
+            
+            # Find the longest matching trigger to avoid partial matches
+            triggers.sort(key=len, reverse=True)
+            for trigger in triggers:
+                # Handle prefix: "ask chatgpt write a poem"
+                if text_lower.startswith(trigger + " "):
+                    return text_lower[len(trigger):].strip()
+                # Handle suffix: "write a poem on chat gpt"
+                if text_lower.endswith(" " + trigger):
+                    return text_lower[:-len(trigger)].strip()
+
             print("No query extracted")
             return None
+        elif param_type == "topic":
+            # --- FIX: Handle flexible "on word" commands first ---
+            # If the command ends with a "word" trigger, the topic is everything before it.
+            text_lower = cmd_text.lower().strip()
+            word_triggers = [" on word", " in word"]
+            for trigger in word_triggers:
+                if text_lower.endswith(trigger):
+                    topic = text_lower[:-len(trigger)].strip()
+                    # The topic itself might be a prompt, like "write a fees application"
+                    print(f"Extracted topic for Word (suffix match): '{topic}'")
+                    return topic
+
+            # Fallback for more structured "write essay on..." commands
+            match = re.search(r'(?:write|compose|type)(?:.*?)(?:on|about)\s+(.+?)(?:\s+on\s+word)?$', cmd_text, re.IGNORECASE)
+            if match:
+                param = match.group(1).strip()
+                print(f"Extracted topic: {param}")
+                return param
+            print("No topic extracted")
+            return None
+        elif param_type == "filename":
+            # Extracts the filename after 'save file as', or uses the topic from context.
+            match = re.search(r'(?:save file as|save this as|save as)\s+(.+)', cmd_text, re.IGNORECASE)
+            if match:
+                param = match.group(1).strip()
+                print(f"Extracted filename: {param}")
+                return param
+            print("No explicit filename extracted, will use context or default.")
+            return None # No explicit filename, handler will use context.
         elif param_type == "nth_email":
             # Match 'read [the] {number|ordinal} (most recent|oldest) [email]' or ordinal words
             match = re.search(r'read\s+(?:the\s+)?(\d+|[a-z]+)(?:st|nd|rd|th)?\s+(most recent|oldest)(?:\s+email)?$', cmd_text, re.IGNORECASE)
@@ -1158,6 +1359,64 @@ class CommandHandler:
         """Execute commands by delegating to appropriate handlers. Returns response text or True/False."""
         cmd_text = self.preprocess_command(cmd_text)
         print(f"Processing command: {cmd_text}")
+
+        # --- Vision Mode Command (High Priority Offline Recognition) ---
+        if any(keyword in cmd_text.lower() for keyword in VISION_MODE_KEYWORDS):
+            # Handles the seamless, threaded transition to the virtual mouse mode.
+            # This is the final implementation.
+            
+            # --- Sci-Fi Transition Lines ---
+            transition_speech = (
+                "Engaging ocular-input matrix. "
+                "Hand-off to gesture control is now active. "
+                "Your movements will command the system."
+            )
+            return_speech = (
+                "Gesture control deactivated. "
+                "Re-engaging auditory command processor. "
+                "Welcome back."
+            )
+            
+            # --- Threading Logic for a Smooth Hand-off ---
+            
+            def launch_vision_mode():
+                """This function runs the virtual mouse and waits for it to close."""
+                logging.info("Virtual mouse thread started. Launching process...")
+                virtual_mouse_script = "vm_gpt11.py"
+                try:
+                    # Use sys.executable to ensure we run with the same Python environment.
+                    # The subprocess will wait here until vm_gpt11.py finishes.
+                    subprocess.run([sys.executable, virtual_mouse_script], check=True, capture_output=True, text=True)
+                except FileNotFoundError:
+                    logging.error(f"FATAL: Could not find the script '{virtual_mouse_script}'. Make sure it's in the main project directory.")
+                    self.speech.speak("Critical error: Vision mode script not found.")
+                except subprocess.CalledProcessError as e:
+                    logging.error(f"The vision mode process exited with an error: {e.stderr}")
+                    self.speech.speak("An error occurred within vision mode.")
+                except Exception as e:
+                    logging.error(f"An unexpected error occurred while launching vision mode: {e}", exc_info=True)
+                    self.speech.speak("A critical error occurred while starting vision mode.")
+
+            # 1. Pause listening before doing anything else.
+            self.voice_recognizer.pause_listening()
+            logging.info("Voice recognition paused for vision mode hand-off.")
+
+            # 2. Create and start the background thread for the virtual mouse.
+            vision_thread = threading.Thread(target=launch_vision_mode, daemon=True)
+            vision_thread.start()
+
+            # 3. Immediately speak the transition message while the mouse loads.
+            self.speech.speak(transition_speech)
+
+            # 4. Wait for the virtual mouse process to complete.
+            vision_thread.join()
+            
+            # 5. The user has given the thumbs-up and the script has exited.
+            #    Resume listening and speak the return message.
+            logging.info("Vision mode process has finished. Resuming standard operations.")
+            self.voice_recognizer.resume_listening()
+            
+            return return_speech
 
         # --- Google Search Command ---
         search_match = re.match(r"(search for|google)\s+(.+)", cmd_text, re.IGNORECASE)
@@ -1215,8 +1474,8 @@ class CommandHandler:
                 params = self.extract_parameters(cmd_text, info.get("params"))
         
         if info["params"] and params is None and "email" not in cmd_name:
-            # Special case: switch tab can work without parameters (switch to next tab)
-            if cmd_name == "switch tab":
+            # Special cases: these commands can work without parameters (they have fallbacks)
+            if cmd_name in ["switch tab", "save file"]:
                 pass  # Allow execution without parameters
             else:
                 command_display = cmd_name if cmd_name else info["handler"]
@@ -1257,7 +1516,11 @@ class CommandHandler:
             if "email" in cmd_name:
                 result = handler_func(cmd_text)
             else:
-                result = handler_func(cmd_text if info["params"] else None)
+                # Pass both params and the full text to handlers that might need context
+                if cmd_name == "write essay":
+                    result = handler_func(params, cmd_text)
+                else:
+                    result = handler_func(params if info["params"] else None)
         
         # Return the handler result (could be string, boolean, or None)
         return result if result is not None else True
@@ -1328,4 +1591,3 @@ class CommandHandler:
         except Exception as e:
             self.file_manager.speech.speak(f"Failed to read email: {e}")
             print(f"Exception in handle_read_nth_email_index: {e}")
-

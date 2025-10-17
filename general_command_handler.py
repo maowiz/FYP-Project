@@ -5,9 +5,16 @@ import cv2
 import os
 from datetime import datetime
 import ctypes
+import re
 import time
 import threading
+import pyautogui
+import pyperclip
+import logging
 import tkinter as tk
+import subprocess
+
+NOTES_FILE = "notes.txt"
 
 class GeneralCommandHandler:
     def __init__(self, file_manager, command_handler=None, speech=None):
@@ -413,8 +420,232 @@ class GeneralCommandHandler:
         print(f"Spelling out: {spelled}")  # Debug log
         return spelled
     
+    def handle_write_essay(self, topic, cmd_text=""):
+        """Generates an essay on a given topic using the LLM and types it out."""
+        if not topic:
+            return "Please specify a topic for the essay."
+
+        if not self.command_handler or not self.command_handler.hybrid_processor:
+            return "The essay writing function is not available right now."
+
+        # --- NEW: Check if the command includes "on word" ---
+        write_on_word = " on word" in cmd_text.lower()
+
+        if write_on_word:
+            try:
+                import pygetwindow as gw
+                word_windows = gw.getWindowsWithTitle('Word')
+                if not word_windows:
+                    self.speech.speak("Microsoft Word is not open. I'll open it first.")
+                    # Use the existing OS handler to open and maximize Word
+                    if hasattr(self.command_handler, 'os_handler'):
+                        self.command_handler.os_handler.handle_open_word()
+                        time.sleep(4) # Give Word extra time to load before typing
+                else:
+                    # If Word is open, make sure it's focused
+                    word_windows[0].activate()
+            except (ImportError, Exception) as e:
+                print(f"Could not check for or open Word due to an error: {e}")
+
+
+        # Store the topic in context for the 'save file' command
+        if hasattr(self.file_manager.os_manager, 'context'):
+            self.file_manager.os_manager.context['last_essay_topic'] = topic
+
+        self.speech.speak(f"Okay, writing a short essay about {topic}. Please wait a moment.")
+
+        # Construct a prompt for the LLM
+        prompt = f"Write a 2 to 3 paragraph essay about {topic}."
+        
+        # --- FIX: Call the LLM directly to avoid recursion ---
+        # The hybrid_processor has the llm_handler instance.
+        if not self.command_handler.hybrid_processor.llm_handler:
+            return "The Language Model is not available for writing essays."
+            
+        essay_text = self.command_handler.hybrid_processor.llm_handler.generate_essay(prompt)
+        # ----------------------------------------------------
+
+        if not essay_text or "I'm sorry" in essay_text or "I couldn't" in essay_text:
+             self.speech.speak("I'm sorry, I couldn't generate an essay on that topic.")
+             return None
+        
+        # --- NEW: Conditional output ---
+        if write_on_word:
+            # Type the essay into the active window (Word)
+            self.speech.speak("Here is the essay.")
+            time.sleep(1) # Give user time to focus the desired window
+            pyautogui.write(essay_text, interval=0.02)
+            return None # No verbal response needed after typing
+        else:
+            # Print to terminal and speak the result
+            print(f"\n--- Essay on {topic} ---\n{essay_text}\n---------------------\n")
+            return essay_text # Return the text to be spoken
     
+    def handle_send_to_chatgpt(self, query):
+        """Opens ChatGPT, focuses the window, and types the query."""
+        if not query:
+            self.speech.speak("Please tell me what to send to ChatGPT.")
+            return None
+
+        self.speech.speak(f"Sending to ChatGPT: {query}")
+
+        try:
+            import pygetwindow as gw
+            import webbrowser
+
+            chatgpt_url = "https://chat.openai.com/"
+            logging.info("Attempting to find ChatGPT window...")
+            # Find ChatGPT window
+            chat_windows = gw.getWindowsWithTitle('ChatGPT')
+            
+            if not chat_windows:
+                self.speech.speak("ChatGPT is not open. I'll open it now.")
+                logging.info("ChatGPT window not found. Opening new browser tab.")
+                webbrowser.open(chatgpt_url)
+                time.sleep(5) # Give the browser time to load the page
+                chat_windows = gw.getWindowsWithTitle('ChatGPT')
+
+            if chat_windows:
+                chat_window = chat_windows[0]
+                # --- FIX: More robust window activation ---
+                logging.info(f"Found ChatGPT window: {chat_window.title}. Activating...")
+                try:
+                    chat_window.activate()
+                except Exception as e:
+                    # If activate() fails, try a more forceful method
+                    logging.warning(f"Standard window activation failed with error: {e}. Trying fallback method.")
+                    chat_window.minimize()
+                    time.sleep(0.2)
+                    chat_window.restore()
+
+                time.sleep(1) # Wait for the window to be active
+                logging.info("Typing query into ChatGPT window.")
+                pyautogui.write(query, interval=0.03)
+                pyautogui.press('enter')
+                logging.info("Query sent to ChatGPT.")
+            else:
+                logging.error("Failed to find ChatGPT window even after attempting to open it.")
+                self.speech.speak("I couldn't find or open the ChatGPT window.")
+
+        except ImportError:
+            logging.error("A required library (pygetwindow or webbrowser) is not installed.")
+            self.speech.speak("A required library for browser interaction is missing.")
+        except Exception as e:
+            # This will now catch any other unexpected error during the process.
+            logging.error(f"An unexpected error occurred in handle_send_to_chatgpt: {e}", exc_info=True)
+            self.speech.speak("I had trouble sending your message to ChatGPT.")
+
+    def handle_noop(self, _=None):
+        """A handler that does nothing, for commands handled by the main loop."""
+        return True
     
+    def handle_read_last_note(self, _=None):
+        """Reads the last entry from the notes file."""
+        try:
+            if not os.path.exists(NOTES_FILE):
+                return "You haven't taken any notes yet."
+            
+            with open(NOTES_FILE, 'r', encoding='utf-8') as f:
+                notes = f.readlines()
+            
+            if not notes:
+                return "Your notes file is empty."
+            
+            last_note = notes[-1].strip()
+            # The note might start with a timestamp, so we clean it for reading.
+            if ' - Note: ' in last_note:
+                last_note = last_note.split(' - Note: ', 1)[1]
+
+            return f"Your last note was: {last_note}"
+        except Exception as e:
+            logging.error(f"Error reading last note: {e}")
+            return "I had trouble reading your last note."
+
+    def handle_show_all_notes(self, _=None):
+        """Opens the notes file in the default text editor."""
+        try:
+            if not os.path.exists(NOTES_FILE):
+                return "You haven't taken any notes yet. I'll create a new notes file for you."
+            
+            os.startfile(NOTES_FILE)
+            return "Opening your notes."
+        except Exception as e:
+            logging.error(f"Error opening notes file: {e}")
+            return "I couldn't open your notes file."
+
+    def _chunk_text(self, text, llm_handler, max_chunk_tokens=250):
+        """Splits text into chunks that are under the token limit."""
+        chunks = []
+        current_chunk = []
+        # Split by paragraphs first, then sentences, to keep context together.
+        paragraphs = text.split('\n\n')
+        for para in paragraphs:
+            sentences = re.split(r'(?<=[.!?])\s+', para)
+            for sentence in sentences:
+                if not sentence:
+                    continue
+                # Check if adding the next sentence would exceed the chunk size
+                if llm_handler.count_tokens(" ".join(current_chunk + [sentence])) > max_chunk_tokens:
+                    # If the current chunk is not empty, finalize it
+                    if current_chunk:
+                        chunks.append(" ".join(current_chunk))
+                        current_chunk = []
+                current_chunk.append(sentence)
+        
+        # Add the last remaining chunk
+        if current_chunk:
+            chunks.append(" ".join(current_chunk))
+            
+        return chunks
+
+    def handle_summarize_clipboard(self, _=None):
+        """Summarizes the text currently on the clipboard using the LLM."""
+        try:
+            text_to_summarize = pyperclip.paste()
+            if not text_to_summarize or not text_to_summarize.strip():
+                return "The clipboard is empty. Please copy some text to summarize."
+            
+            if not self.command_handler.hybrid_processor.llm_handler:
+                return "The Language Model is not available for summarization."
+            
+            llm_handler = self.command_handler.hybrid_processor.llm_handler
+            
+            # The prompt itself takes ~70 tokens, and we want ~150 for the output.
+            # So, the safe input size is 512 - 70 - 150 = 292. We'll use 250 as a safe limit.
+            safe_token_limit = 250
+            current_text = text_to_summarize
+
+            # Check if the initial text is long
+            if llm_handler.count_tokens(current_text) > safe_token_limit:
+                self.speech.speak("The text is long. I will summarize it in parts. This may take a moment.")
+            else:
+                self.speech.speak("Summarizing the text from your clipboard. Please wait.")
+
+            # --- RECURSIVE REDUCTION LOOP ---
+            # Keep summarizing until the text is short enough for a final pass.
+            while llm_handler.count_tokens(current_text) > safe_token_limit:
+                logging.info(f"Text is too long ({llm_handler.count_tokens(current_text)} tokens). Chunking and reducing...")
+                chunks = self._chunk_text(current_text, llm_handler, max_chunk_tokens=safe_token_limit)
+                
+                intermediate_summaries = []
+                for i, chunk in enumerate(chunks):
+                    logging.info(f"Summarizing chunk {i+1}/{len(chunks)}...")
+                    chunk_summary = llm_handler.generate_summary(chunk)
+                    intermediate_summaries.append(chunk_summary)
+                # The combined summaries become the input for the next loop iteration
+                current_text = "\n".join(intermediate_summaries)
+            
+            # Perform the final summarization on the now-manageable text
+            logging.info("Performing final summarization...")
+            summary = llm_handler.generate_summary(current_text)
+
+            print(f"\n--- Summary ---\n{summary}\n-----------------\n")
+            return f"Here is the summary: {summary}"
+
+        except Exception as e:
+            logging.error(f"Error summarizing clipboard: {e}")
+            return "I had trouble summarizing the text from the clipboard."
+
     def handle_read_most_recent_email(self, cmd_text=None):
         if hasattr(self.file_manager, 'command_handler') and hasattr(self.file_manager.command_handler, 'handle_read_most_recent_email'):
             return self.file_manager.command_handler.handle_read_most_recent_email()
@@ -434,6 +665,5 @@ class GeneralCommandHandler:
         if hasattr(self.file_manager, 'command_handler') and hasattr(self.file_manager.command_handler, 'handle_read_nth_oldest_email'):
             return self.file_manager.command_handler.handle_read_nth_oldest_email(param)
         return "Email reading is not available."
-    
     
 

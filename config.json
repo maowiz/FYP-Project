@@ -1,0 +1,17 @@
+{
+    "llm": {
+        "enabled": true,
+        "model_path": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+        "timeout": 10,
+        "max_tokens": 60,
+        "temperature": 0.1
+    },
+    "classifier": {
+        "confidence_threshold": 0.6,
+        "retrain_on_startup": false
+    },
+    "cache": {
+        "enabled": true,
+        "size": 50
+    }
+}

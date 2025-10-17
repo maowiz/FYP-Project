@@ -156,7 +156,34 @@
 
 ---
 
-## 🖼️ **SCREENSHOT & PHOTO**
+## 📋 **CLIPBOARD CONTROL**
+
+### Clipboard Functions
+- **"copy"** - Copy the selected item/text
+  - Synonyms: "copy that", "copy this"
+- **"paste"** - Paste the clipboard content
+  - Synonyms: "paste that", "paste this", "paste here"
+- **"read clipboard"** - Read the text content of the clipboard
+  - Synonyms: "what's on the clipboard", "read my clipboard", "tell me what's on the clipboard"
+
+- **"select all"** - Select all items/text in the current context
+  - Synonyms: "select everything"
+
+- **"remove this"** - Deletes the currently selected text or items.
+  - Synonyms: "delete this", "remove selection", "delete selection", "clear selection"
+
+- **"undo"** - Undoes the last action (sends Ctrl+Z).
+  - Synonyms: "undo that", "control z", "that was a mistake", "go back"
+
+- **"redo"** - Redoes the last undone action (sends Ctrl+Y).
+  - Synonyms: "redo that", "control y"
+
+- **"save file [as filename]"** - Saves the current file to the desktop. If no name is given, it uses context from the last essay.
+  - Synonyms: "save this file", "save it", "save the file"
+
+---
+
+## �️ **SCREENSHOT & PHOTO**
 
 ### Capture Functions
 - **"take screenshot"** - Capture screen screenshot
@@ -254,6 +281,10 @@
 - **"open [target]"** - Open generic target
   - Synonyms: "launch", "start", "go to"
 
+- **"open word"** - Opens Microsoft Word.
+  - Synonyms: "launch word", "start word", "microsoft word"
+
+
 ### Health & Fitness
 - **"check bmi [weight] kg [height] m"** - Calculate BMI
   - Synonyms: "calculate bmi", "what is my bmi", "bmi check", "bmi"
@@ -265,6 +296,15 @@
 ### Text & Language
 - **"spell [text]"** - Spell text phonetically
   - Synonyms: "phonetic", "phonetically", "spelling"
+- **"write essay [on topic]"** - Writes a short essay on a given topic and types it into the active window.
+  - Synonyms: "write an essay on", "write about", "compose an essay on"
+
+- **"send to chatgpt [query]"** - Opens ChatGPT and sends the query.
+  - Synonyms: "chatgpt", "ask chatgpt", "tell chatgpt", "on chatgpt"
+
+- **"summarize clipboard"** - Summarizes the text content of the clipboard.
+  - Synonyms: "summarize this", "summarize the clipboard", "give me a summary"
+
 
 ### Phone & Device
 - **"find my phone"** - Ring your phone
@@ -286,6 +326,26 @@
 - **"exit"** - Exit the voice assistant
   - Synonyms: "quit", "stop program", "bye", "good bye", "goodbye", "shut down", "terminate", "kill program", "shutdown assistant"
 
+---
+
+## ✍️ **DICTATION MODE**
+
+- **"start dictation"** - Enters dictation mode. Everything you say will be typed.
+  - Synonyms: "start dictation mode", "begin dictation", "dictation on"
+- **"stop dictation"** - Exits dictation mode and returns to command processing.
+  - Synonyms: "stop dictation mode", "end dictation", "dictation off"
+---
+
+## 🗒️ **NOTE-TAKING**
+
+- **"take a note"** - Listens for the next thing you say and saves it as a note.
+  - Synonyms: "add a note", "new note", "write a note", "note this down"
+
+- **"read last note"** - Reads the most recent note you've saved.
+  - Synonyms: "what was my last note", "read the last note"
+
+- **"show all notes"** - Opens the `notes.txt` file in your default text editor.
+  - Synonyms: "open my notes", "show notes", "view all notes"
 ---
 
 ## 📝 **USAGE NOTES**

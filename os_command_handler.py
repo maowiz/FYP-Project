@@ -7,6 +7,7 @@ import ctypes
 import win32con
 import webbrowser
 import subprocess
+import pyperclip
 import sys
 from browser_commands import (
     previous_tab, next_tab, close_tab, refresh, zoom_in, zoom_out,
@@ -467,7 +468,144 @@ class OSCommandHandler:
         self.os_manager.speech.speak(f"Searching YouTube for {query}.")
         print(f"Opened YouTube search for: {query}")
 
-    
-    
+    def handle_copy(self, cmd_text=None):
+        """Handle the 'copy' command by sending Ctrl+C."""
+        try:
+            import pyautogui
+            pyautogui.hotkey('ctrl', 'c')
+            self.os_manager.speech.speak("Copied.")
+            return True
+        except Exception as e:
+            print(f"Error copying: {e}")
+            self.os_manager.speech.speak("I was unable to copy.")
+            return False
 
+    def handle_paste(self, cmd_text=None):
+        """Handle the 'paste' command by sending Ctrl+V."""
+        try:
+            import pyautogui
+            pyautogui.hotkey('ctrl', 'v')
+            self.os_manager.speech.speak("Pasted.")
+            return True
+        except Exception as e:
+            print(f"Error pasting: {e}")
+            self.os_manager.speech.speak("I was unable to paste.")
+            return False
+
+    def handle_read_clipboard(self, cmd_text=None):
+        """Reads the current content of the clipboard."""
+        try:
+            content = pyperclip.paste()
+            if content:
+                # To prevent reading out very long text, we'll truncate it for speech.
+                spoken_content = (content[:150] + '...') if len(content) > 150 else content
+                self.os_manager.speech.speak(f"The clipboard says: {spoken_content}")
+                print(f"Clipboard content: {content}")
+            else:
+                self.os_manager.speech.speak("The clipboard is empty.")
+            return True
+        except Exception as e:
+            print(f"Error reading clipboard: {e}")
+            self.os_manager.speech.speak("I couldn't access the clipboard.")
+            return False
+
+    def handle_select_all(self, cmd_text=None):
+        """Handle the 'select all' command by sending Ctrl+A."""
+        try:
+            import pyautogui
+            pyautogui.hotkey('ctrl', 'a')
+            self.os_manager.speech.speak("Selected all.")
+            return True
+        except Exception as e:
+            print(f"Error selecting all: {e}")
+            self.os_manager.speech.speak("I was unable to select all.")
+            return False
+
+    def handle_open_word(self, cmd_text=None):
+        """Handle the 'open word' command."""
+        try:
+            import pyautogui
+            import time
+            import pygetwindow as gw
+
+            self.os_manager.run_application("word")
+            time.sleep(3) # Wait for Word to launch
+            word_windows = gw.getWindowsWithTitle('Word')
+            if word_windows:
+                word_window = word_windows[0]
+                word_window.maximize()
+                self.os_manager.speech.speak("Microsoft Word opened and maximized.")
+            # The run_application method already provides feedback
+            return True
+        except Exception as e:
+            print(f"Error opening Word: {e}")
+            self.os_manager.speech.speak("I was unable to open Microsoft Word.")
+            return False
+
+    def handle_save_file(self, filename=None):
+        """Saves the current active file to the desktop with a given name."""
+        try:
+            import pyautogui
+            import time
+            # If no filename is provided, use the context from the essay command or a default.
+            if not filename:
+                topic = self.os_manager.context.get("last_essay_topic", "document")
+                # Sanitize topic to be a valid filename
+                filename = "".join([c for c in topic if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+                filename = f"{filename.replace(' ', '_')}.txt"
+
+            desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+            full_path = os.path.join(desktop_path, filename)
+
+            pyautogui.hotkey('ctrl', 's')
+            time.sleep(1) # Wait for the save dialog to appear
+            pyautogui.write(full_path, interval=0.05)
+            time.sleep(0.5)
+            pyautogui.press('enter')
+            self.os_manager.speech.speak(f"File saved as {filename} on your desktop.")
+            
+            # --- NEW: Open the desktop to show the saved file ---
+            time.sleep(1) # Wait a moment before showing the desktop
+            self.handle_go_to_desktop()
+            return True
+        except Exception as e:
+            print(f"Error saving file: {e}")
+            self.os_manager.speech.speak("I was unable to save the file.")
+            return False
+
+    def handle_remove_selection(self, cmd_text=None):
+        """Handle the 'remove this' command by pressing the Delete key."""
+        try:
+            import pyautogui
+            pyautogui.press('delete')
+            self.os_manager.speech.speak("Removed.")
+            return True
+        except Exception as e:
+            print(f"Error removing selection: {e}")
+            self.os_manager.speech.speak("I was unable to remove the selection.")
+            return False
+
+    def handle_undo_action(self, cmd_text=None):
+        """Handle the 'undo' command by sending Ctrl+Z."""
+        try:
+            import pyautogui
+            pyautogui.hotkey('ctrl', 'z')
+            self.os_manager.speech.speak("Undone.")
+            return True
+        except Exception as e:
+            print(f"Error performing undo: {e}")
+            self.os_manager.speech.speak("I was unable to undo.")
+            return False
+    
+    def handle_redo_action(self, cmd_text=None):
+        """Handle the 'redo' command by sending Ctrl+Y."""
+        try:
+            import pyautogui
+            pyautogui.hotkey('ctrl', 'y')
+            self.os_manager.speech.speak("Redone.")
+            return True
+        except Exception as e:
+            print(f"Error performing redo: {e}")
+            self.os_manager.speech.speak("I was unable to redo.")
+            return False
     

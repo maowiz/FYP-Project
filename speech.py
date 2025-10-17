@@ -1,6 +1,12 @@
 import subprocess
 import json
 from typing import List, Dict, Optional
+
+try:
+    import pyttsx3
+except ImportError:
+    pyttsx3 = None
+
 from assistant_state import set_speaking
 
 
@@ -16,19 +22,50 @@ class Speech:
         # System.Speech volume is 0..100
         self.volume_percent: int = 100
         self._current_ps_proc: Optional[subprocess.Popen] = None
+
+        # --- Fallback Engine ---
+        self.use_fallback = False
+        self.fallback_engine = None
+        if pyttsx3:
+            try:
+                # Explicitly initialize with the SAPI5 driver for Windows for better compatibility.
+                self.fallback_engine = pyttsx3.init(driverName='sapi5')
+                print("[TTS] pyttsx3 fallback engine initialized with SAPI5 driver.")
+
+                # --- Diagnostics and Robustness ---
+                voices = self.fallback_engine.getProperty('voices')
+                if voices:
+                    print(f"[TTS] Found {len(voices)} voices for pyttsx3.")
+                    # Log the first few voices for debugging purposes.
+                    for i, voice in enumerate(voices[:2]):
+                        print(f"  - Voice {i}: {voice.name} ({voice.id})")
+                    # Explicitly set the first available voice to avoid issues with a bad default.
+                    self.fallback_engine.setProperty('voice', voices[0].id)
+                    print(f"[TTS] Set pyttsx3 voice to: {voices[0].name}")
+                else:
+                    print("[TTS] WARNING: No voices found for pyttsx3. Fallback TTS may not work.")
+            except Exception as e:
+                print(f"[TTS] FATAL: Could not initialize pyttsx3 fallback engine: {e}")
+                self.fallback_engine = None # Ensure it's None on failure
+        else:
+            print("[TTS] Warning: pyttsx3 not installed. No fallback TTS is available.")
         print("PowerShell TTS initialized.")
 
     def _build_ps_command(self) -> List[str]:
         voice = self.voice_name or ""
-        script = (
-            f"$rate={self.rate_steps}; $vol={self.volume_percent}; $voice='{voice.replace("'", "''")}';\n"
-            "Add-Type -AssemblyName System.Speech;\n"
-            "$sp = New-Object System.Speech.Synthesis.SpeechSynthesizer;\n"
-            "$sp.Rate = $rate; $sp.Volume = $vol;\n"
-            "if ($voice -ne '') { try { $sp.SelectVoice($voice) } catch { } }\n"
-            "$text = [Console]::In.ReadToEnd();\n"
-            "$sp.Speak($text);\n"
-        )
+        escaped_voice = voice.replace("'", "''")
+        script = f"""
+        $rate={self.rate_steps};
+        $vol={self.volume_percent};
+        $voice='{escaped_voice}';
+        Add-Type -AssemblyName System.Speech;
+        $sp = New-Object System.Speech.Synthesis.SpeechSynthesizer;
+        try {{ $sp.SetOutputToDefaultAudioDevice() }} catch {{ Write-Error 'No default audio device found.'; exit 1; }};
+        $sp.Rate = $rate; $sp.Volume = $vol;
+        if ($voice -ne '') {{ try {{ $sp.SelectVoice($voice) }} catch {{ }} }}
+        $text = [Console]::In.ReadToEnd();
+        $sp.Speak($text);
+        """
         return [
             "powershell",
             "-NoProfile",
@@ -36,10 +73,25 @@ class Speech:
             script,
         ]
 
+
     def speak(self, text: str) -> None:
         if not self.can_speak_flag:
             print(f"[TTS] Blocked: can_speak_flag is False. Text: '{text}'")
             return
+
+        # --- Fallback Logic ---
+        if self.use_fallback:
+            if self.fallback_engine:
+                try:
+                    print(f"[TTS] Speaking via pyttsx3 (fallback): '{text}'")
+                    set_speaking(True)
+                    self.fallback_engine.say(text)
+                    self.fallback_engine.runAndWait()
+                    set_speaking(False)
+                except Exception as e:
+                    print(f"[TTS] Error in pyttsx3 fallback: {e}")
+            return # End of fallback path
+
         if self._current_ps_proc and self._current_ps_proc.poll() is None:
             print("[TTS] Engine is already busy. Command ignored.")
             return
@@ -56,7 +108,15 @@ class Speech:
             set_speaking(True)
             stdout, stderr = self._current_ps_proc.communicate(input=text)
             if self._current_ps_proc.returncode != 0:
-                print(f"[TTS] PowerShell error (code {self._current_ps_proc.returncode}): {stderr.strip()}")
+                err_msg = stderr.strip()
+                print(f"[TTS] PowerShell error (code {self._current_ps_proc.returncode}): {err_msg}")
+                # If we get the specific audio device error, switch to the fallback
+                if "AudioException" in err_msg or "0x20" in err_msg:
+                    print("[TTS] FATAL: Audio device error detected. Switching to pyttsx3 fallback engine for future calls.")
+                    self.use_fallback = True
+                    # Retry the same speech command with the newly activated fallback engine.
+                    print(f"[TTS] Retrying with fallback: '{text}'")
+                    self.speak(text)
             self._current_ps_proc = None
             set_speaking(False)
         except Exception as e:
