@@ -3,31 +3,67 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
+dist/
+build/
 
 # Virtual Environment
 venv/
 env/
+.venv/
 
 # Sensitive files - VERY IMPORTANT
 credentials.json
 token.pickle
 *.token
+.env
+.env.local
 
 # IDE/Editor specific files
 .vscode/
 .idea/
+*.swp
+*.swo
+.DS_Store
 
 # Operating System files
-.DS_Store
 Thumbs.db
+desktop.ini
 
-__pycache__/
-*.pyc
-credentials.json
-token.pickle
+# Node modules and frontend dependencies
+node_modules/
+package-lock.json
+
+# Large model files - DO NOT PUSH
+*.gguf
 qwen2.5-0.5b-instruct-q4_k_m.gguf
+*.bin
+*.safetensors
 
+# ML/AI model and pickle files
+*.pkl
+*.pickle
+face_encodings.pkl
+labels.pkl
+face_database.pkl
 
-* text=auto
+# Temporary and log files
+*.log
+*.tmp
+*.swp
+notes.txt
+todo_list.txt
+
+# Test files
+websocket_test.py
+whisper_test.py
+
+# Face authentication dataset (too large)
+auth/dataset/
+
+# Frontend dist and build
+frontend\ advance/dist/
+frontend\ advance/node_modules/
+frontend\ advance/.vite/
 
 
