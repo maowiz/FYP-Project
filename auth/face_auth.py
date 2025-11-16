@@ -333,7 +333,70 @@ class FaceAuthSystem:
             except Exception as e:
                 print(f"⚠️  Error loading database: {e}")
         return False
-    
+
+    def authenticate_image(self, image_data):
+        """Authenticate a single image provided as raw bytes.
+
+        Returns:
+            tuple[bool, str, float, str, str]: (authorized, person, score, status, message)
+            status values: "success", "no_face", "multi_face", "unauthorized", "decode_error", "error"
+        """
+        if not self.face_database:
+            print("❌ Face database is not loaded!")
+            return False, "Unknown", 0.0, "error", "Face database missing. Please enroll identities."
+
+        try:
+            # 1. Decode the incoming JPEG/PNG bytes into an OpenCV BGR frame
+            nparr = np.frombuffer(image_data, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            if frame is None:
+                print("❌ Failed to decode image")
+                return False, "Unknown", 0.0, "decode_error", "Camera frame corrupted. Try again."
+
+            # 2. Detect faces in the frame
+            faces, gray = self.detect_faces(frame)
+
+            if len(faces) == 0:
+                print("❌ No face detected in image")
+                return False, "Unknown", 0.0, "no_face", "No biometric signature detected. Align with the sensor frame."
+
+            if len(faces) > 1:
+                print("⚠️ Multiple faces detected, using largest one")
+                (x, y, w, h) = max(faces, key=lambda f: f[2] * f[3])
+                status_hint = "multi_face"
+            else:
+                (x, y, w, h) = faces[0]
+                status_hint = "success"
+
+            # 3. Extract features from the detected face region
+            face_roi_color = frame[y:y+h, x:x+w]
+            features = self.extract_features(face_roi_color)
+
+            # 4. Compare against the stored database
+            best_match = None
+            best_score = 0.0
+            for name, stored_features in self.face_database.items():
+                score = self.compare_faces(features, stored_features)
+                if score > best_score:
+                    best_score = score
+                    best_match = name
+
+            # 5. Apply the same decision threshold as live authenticate()
+            confidence_threshold = 75
+            if best_score >= confidence_threshold and best_match is not None:
+                print(f"✅ Image authenticated: {best_match} ({best_score:.0f}%)")
+                return True, best_match, float(best_score), "success", f"Access granted. Welcome, {best_match}."
+
+            print(f"❌ Image denied: Unknown ({best_score:.0f}%)")
+            denial_message = "Identity mismatch. Access denied."
+            denial_status = "unauthorized" if status_hint == "success" else status_hint
+            return False, "Unknown", float(best_score), denial_status, denial_message
+
+        except Exception as e:
+            print(f"Error in authenticate_image: {e}")
+            return False, "Unknown", 0.0, "error", "Authentication module encountered an error."
+
     def authenticate(self):
         """Live face authentication"""
         print(f"\n{'═'*60}")

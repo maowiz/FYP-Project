@@ -64,6 +64,35 @@ connected_clients = set()
 ws_loop = None  # Global variable to store the WebSocket event loop
 dictation_mode = False  # Global variable for dictation mode
 
+face_auth_gate = threading.Event()
+face_auth_identity: Optional[str] = None
+
+def push_face_auth_status(status: str, message: str, name: Optional[str] = None) -> None:
+    payload: dict[str, Any] = {
+        "type": "face_auth",
+        "status": status,
+        "message": message,
+    }
+    if name:
+        payload["name"] = name
+    try:
+        ui_message_queue.put(payload)
+    except Exception as e:
+        logging.error(f"Error broadcasting face auth status: {e}")
+
+def set_face_auth_granted(person_name: Optional[str] = None) -> None:
+    """Unlock the assistant once FaceAuth succeeds."""
+    global face_auth_identity
+    face_auth_identity = person_name
+    if face_auth_gate.is_set():
+        return
+    face_auth_gate.set()
+    logging.info("Face authentication granted; assistant unlocked.")
+    try:
+        ui_message_queue.put({"type": "state", "phase": "listening"})
+    except Exception as e:
+        logging.error(f"Error broadcasting face auth unlock: {e}")
+
 async def broadcast_message(message_json):
     """Sends a JSON message to all connected UI clients."""
     if connected_clients:
@@ -181,9 +210,18 @@ def new_set_speaking(is_speaking_bool):
 
 # --- END NEW WebSocket Server Logic ---
 
-def main():
-    """Professional voice assistant with a hybrid AI core and proper state management."""
+def main(start_ws: bool = True):
+    """Professional voice assistant with a hybrid AI core and proper state management.
+
+    When start_ws is False, the WebSocket server is expected to be started by an external
+    orchestrator (e.g. server.py running FastAPI), but all init_progress events still flow
+    through the shared ui_message_queue.
+    """
+    global face_auth_identity
+
     logging.info("Initializing Professional Voice Assistant...")
+    face_auth_gate.clear()
+    face_auth_identity = None
     push_progress(2, "Booting AI Core services...")
 
     # Initialize speech variable to avoid unbound variable error
@@ -220,10 +258,11 @@ def main():
     # And change it to:
     # new_set_speaking(False)
 
-    # --- NEW: Start the WebSocket Server Thread ---
-    ws_thread = threading.Thread(target=start_websocket_server, daemon=True)
-    ws_thread.start()
-    push_progress(4, "WebSocket bridge online. Awaiting backend startup...")
+    # --- NEW: Start the WebSocket Server Thread (optional) ---
+    if start_ws:
+        ws_thread = threading.Thread(target=start_websocket_server, daemon=True)
+        ws_thread.start()
+        push_progress(4, "WebSocket bridge online. Awaiting backend startup...")
 
     # Heavy imports live inside main so we can show UI feedback while Python loads packages
     push_progress(8, "Loading AI dependencies (ctranslate2, comtypes, TTS)...")
@@ -327,13 +366,22 @@ def main():
         speech.speak("Professional voice assistant ready. Say a command.")
     push_progress(100, "System Ready", system_ready=True)
     
-    # --- NEW: Send initial state to UI ---
-    # We need to wait a moment for the server to be ready
+    # --- NEW: Send face auth pending state to UI ---
     time.sleep(2) # Increased delay to ensure server is ready
     try:
-        ui_message_queue.put({"type": "state", "phase": "listening"})
+        ui_message_queue.put({"type": "state", "phase": "face_auth"})
     except Exception as e:
-        logging.error(f"Error sending initial state: {e}")
+        logging.error(f"Error sending face auth pending state: {e}")
+
+    if not face_auth_gate.is_set():
+        logging.info("Awaiting face authentication confirmation before enabling commands...")
+        face_auth_gate.wait()
+        logging.info("Face authentication confirmed. Activating assistant loop.")
+
+    # Announce welcome message once authentication completes
+    if speech:
+        welcome_target = face_auth_identity or "Operator"
+        speech.speak(f"Access granted. Welcome back, {welcome_target}.")
 
     global dictation_mode
     dictation_mode = False
@@ -345,11 +393,14 @@ def main():
             # --- NEW: Check for commands from the UI ---
             try:
                 ui_command = python_command_queue.get_nowait()
+
+                # 1. Handle text commands from chat input
                 if ui_command.get("type") == "run_command":
                     transcription = ui_command.get("text", "")
                     # We'll process this command just like speech
                 
-                if ui_command.get("type") == "toggle_dictation":
+                # 2. Handle dictation toggle
+                elif ui_command.get("type") == "toggle_dictation":
                     # This is a special command to toggle dictation
                     if not dictation_mode:
                          dictation_mode = True
@@ -368,6 +419,19 @@ def main():
                          except Exception as e:
                              logging.error(f"Error sending listening state: {e}")
                     continue # Skip the rest of the loop
+
+                # 3. --- THIS IS THE NEW PART ---
+                #    Handle Mic Toggle from the "Mode Button"
+                elif ui_command.get("type") == "toggle_mic":
+                    if voice_recognizer:
+                        if ui_command.get("action") == "pause":
+                            voice_recognizer.pause_listening()
+                            logging.info("UI requested mic PAUSE")
+                        elif ui_command.get("action") == "resume":
+                            voice_recognizer.resume_listening()
+                            logging.info("UI requested mic RESUME")
+                    continue # Skip the rest of the loop
+
             except queue.Empty:
                 transcription = None # No command from UI
             

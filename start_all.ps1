@@ -3,8 +3,8 @@ param(
 )
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-Write-Host "Starting backend (python main.py)..."
-Start-Process powershell -ArgumentList "-NoProfile","-ExecutionPolicy","Bypass","-Command","cd `"$repoRoot`"; python main.py" | Out-Null
+Write-Host "Starting backend (python server.py)..."
+Start-Process powershell -ArgumentList "-NoProfile","-ExecutionPolicy","Bypass","-Command","cd `"$repoRoot`"; python server.py" | Out-Null
 
 if (-not $NoFrontendDelay) {
     Start-Sleep -Seconds 2
