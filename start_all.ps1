@@ -1,16 +1,24 @@
-param(
-    [switch]$NoFrontendDelay
-)
-
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-Write-Host "Starting backend (python server.py)..."
-Start-Process powershell -ArgumentList "-NoProfile","-ExecutionPolicy","Bypass","-Command","cd `"$repoRoot`"; python server.py" | Out-Null
 
-if (-not $NoFrontendDelay) {
-    Start-Sleep -Seconds 2
-}
+Write-Host "Launching FYP System..." -ForegroundColor Cyan
 
-Write-Host "Starting frontend dev server..."
-Push-Location (Join-Path $repoRoot 'frontend advance')
-npm run dev
-Pop-Location
+# 1. Start Backend
+Write-Host "Starting Backend Server..."
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "& {
+    `$Host.UI.RawUI.WindowTitle = 'FYP BACKEND';
+    cd '$repoRoot';
+    Write-Host 'Starting Python Server...' -ForegroundColor Green;
+    python server.py;
+}"
+
+# 2. Start Frontend
+Write-Host "Starting Frontend Dev Server..."
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "& {
+    `$Host.UI.RawUI.WindowTitle = 'FYP FRONTEND';
+    cd '$repoRoot\frontend advance';
+    Write-Host 'Starting React Dev Server...' -ForegroundColor Green;
+    npm run dev;
+}"
+
+Write-Host "All systems launched!" -ForegroundColor Green
+

@@ -4,7 +4,6 @@ from __future__ import annotations
 import time 
 import sys
 import traceback            
-import traceback            
 import logging               
 import os     
 import pyautogui
@@ -284,6 +283,35 @@ def main(start_ws: bool = True):
         logging.info("Speech module initialized")
         push_progress(28, "Speech System online.", "speech", "done")
 
+        # --- NEW: Start early speech processor ---
+        # This thread will process 'speak' commands from the queue IMMEDIATELY,
+        # even while the rest of initialization is still running.
+        speech_processor_running = threading.Event()
+        speech_processor_running.set()
+        
+        def early_speech_processor():
+            """Process only 'speak' commands while initialization is ongoing."""
+            while speech_processor_running.is_set():
+                try:
+                    ui_command = python_command_queue.get(timeout=0.1)
+                    if ui_command.get("type") == "speak":
+                        text_to_say = ui_command.get("text", "")
+                        if speech and text_to_say:
+                            logging.info(f"[Early] UI requested speech: {text_to_say}")
+                            speech.speak(text_to_say)
+                    else:
+                        # Not a speak command, put it back for the main loop
+                        python_command_queue.put(ui_command)
+                except queue.Empty:
+                    continue
+                except Exception as e:
+                    logging.error(f"Error in early speech processor: {e}")
+        
+        speech_thread = threading.Thread(target=early_speech_processor, daemon=True)
+        speech_thread.start()
+        logging.info("Early speech processor started.")
+        # --- END NEW ---
+
         push_progress(32, "Activating voice engine...", "voiceEngine", "loading")
         # The new HybridVoiceRecognizer is initialized here
         voice_recognizer = VoiceRecognizer()
@@ -331,6 +359,13 @@ def main(start_ws: bool = True):
             original_command_handler.hybrid_processor = cast(Any, hybrid_processor) # Link back for translation
         logging.info("HybridCommandProcessor initialized.")
         push_progress(88, "Knowledge Core online. Finalizing subsystems...", "knowledgeCore", "done")
+        
+        # --- STOP EARLY SPEECH PROCESSOR ---
+        speech_processor_running.clear()
+        speech_thread.join(timeout=1.0)
+        logging.info("Early speech processor stopped. Main loop will take over.")
+        # --- END ---
+
 
 
 
@@ -362,27 +397,24 @@ def main(start_ws: bool = True):
         sys.exit(1)
 
     # --- Initial Greeting and Main Loop ---
-    if speech:
-        speech.speak("Professional voice assistant ready. Say a command.")
+    # Startup speech is suppressed; UI will request speech explicitly when ready.
     push_progress(100, "System Ready", system_ready=True)
+
+    # Start voice recognition in a paused state so UI can control activation.
+    if voice_recognizer:
+        voice_recognizer.pause_listening()
+        logging.info("Voice recognition started in PAUSED state (awaiting UI activation)")
     
     # --- NEW: Send face auth pending state to UI ---
-    time.sleep(2) # Increased delay to ensure server is ready
     try:
         ui_message_queue.put({"type": "state", "phase": "face_auth"})
     except Exception as e:
         logging.error(f"Error sending face auth pending state: {e}")
 
     if not face_auth_gate.is_set():
-        logging.info("Awaiting face authentication confirmation before enabling commands...")
-        face_auth_gate.wait()
-        logging.info("Face authentication confirmed. Activating assistant loop.")
-
-    # Announce welcome message once authentication completes
-    if speech:
-        welcome_target = face_auth_identity or "Operator"
-        speech.speak(f"Access granted. Welcome back, {welcome_target}.")
-
+        logging.info("Awaiting face authentication confirmation...")
+        # We do NOT wait() here anymore. We let the loop handle it.
+    
     global dictation_mode
     dictation_mode = False
     note_taking_mode = False
@@ -393,6 +425,34 @@ def main(start_ws: bool = True):
             # --- NEW: Check for commands from the UI ---
             try:
                 ui_command = python_command_queue.get_nowait()
+
+                # --- CHANGE 3: Add 'speak' command handler (PRIORITY) ---
+                # We handle this FIRST so the system can speak even if locked.
+                if ui_command.get("type") == "speak":
+                    text_to_say = ui_command.get("text", "")
+                    if speech and text_to_say:
+                        logging.info(f"UI requested speech: {text_to_say}")
+                        if voice_recognizer:
+                            voice_recognizer.pause_listening()
+
+                        speech.speak(text_to_say)
+
+                        if voice_recognizer and (dictation_mode or note_taking_mode):
+                            voice_recognizer.resume_listening()
+                    continue
+
+                # --- SECURITY GATE ---
+                # If not authenticated, we ignore all other commands
+                if not face_auth_gate.is_set():
+                    # Optional: Check if we just got authenticated?
+                    # The face_auth_gate is set by the server thread calling set_face_auth_granted
+                    # We can just continue polling until it is set.
+                    time.sleep(0.1)
+                    continue
+
+                # ---------------------------------------------------------
+                #  BELOW THIS LINE IS ONLY REACHED IF AUTHENTICATED
+                # ---------------------------------------------------------
 
                 # 1. Handle text commands from chat input
                 if ui_command.get("type") == "run_command":
@@ -431,12 +491,13 @@ def main(start_ws: bool = True):
                             voice_recognizer.resume_listening()
                             logging.info("UI requested mic RESUME")
                     continue # Skip the rest of the loop
-
+                
             except queue.Empty:
                 transcription = None # No command from UI
             
             # STATE 1: LISTENING
-            if not transcription: # Only listen if no command from UI
+            # Only listen if authenticated
+            if face_auth_gate.is_set() and not transcription: 
                 if voice_recognizer:
                     transcription = voice_recognizer.get_transcription()
 
