@@ -1523,7 +1523,13 @@ class CommandHandler:
                     result = handler_func(params if info["params"] else None)
         
         # Return the handler result (could be string, boolean, or None)
-        return result if result is not None else True
+        # If result is None or True, return a generic success message
+        if result is not None and isinstance(result, str):
+            return result
+        elif result:
+            return "Command executed successfully."
+        else:
+            return "Command execution failed."
 
     def handle_read_most_recent_email(self):
         print("handle_read_most_recent_email called")

@@ -30,18 +30,22 @@ class OSCommandHandler:
     def handle_volume_up(self, cmd_text=None):
         """Handle the 'increase volume' command."""
         self.os_manager.volume_up()
+        return "Volume increased."
 
     def handle_volume_down(self, cmd_text=None):
         """Handle the 'decrease volume' command."""
         self.os_manager.volume_down()
+        return "Volume decreased."
 
     def handle_mute_toggle(self, cmd_text=None):
         """Handle the 'mute/unmute volume' command."""
         self.os_manager.mute_toggle()
+        return "Volume mute toggled."
 
     def handle_maximize_volume(self, cmd_text=None):
         """Handle the 'maximize volume' command."""
         self.os_manager.maximize_volume()
+        return "Volume maximized."
 
     def handle_set_volume(self, cmd_text):
         """Handle the 'set volume' command."""
@@ -50,24 +54,30 @@ class OSCommandHandler:
             level = int(match.group(1)) if match else None
             if level is not None:
                 self.os_manager.set_volume(str(level))
+                return f"Volume set to {level}%."
             else:
                 print("No valid volume level found. Please say a number between 0 and 100.")
                 self.os_manager.speech.speak("No valid volume level found. Please say a number between 0 and 100.")
+                return "No valid volume level found. Please say a number between 0 and 100."
         except Exception as e:
             print(f"Error setting volume: {e}")
             self.os_manager.speech.speak("Error setting volume.")
+            return "Error setting volume."
 
     def handle_brightness_up(self, cmd_text=None):
         """Handle the 'increase brightness' command."""
         self.os_manager.brightness_up()
+        return "Brightness increased."
 
     def handle_brightness_down(self, cmd_text=None):
         """Handle the 'decrease brightness' command."""
         self.os_manager.brightness_down()
+        return "Brightness decreased."
 
     def handle_maximize_brightness(self, cmd_text=None):
         """Handle the 'maximize brightness' command."""
         self.os_manager.maximize_brightness()
+        return "Brightness maximized."
 
     def handle_set_brightness(self, cmd_text):
         """Handle the 'set brightness' command."""
@@ -76,87 +86,104 @@ class OSCommandHandler:
             level = int(match.group(1)) if match else None
             if level is not None:
                 self.os_manager.set_brightness(str(level))
+                return f"Brightness set to {level}%."
             else:
                 print("No valid brightness level found. Please say a number between 0 and 100.")
                 self.os_manager.speech.speak("No valid brightness level found. Please say a number between 0 and 100.")
+                return "No valid brightness level found. Please say a number between 0 and 100."
         except Exception as e:
             print(f"Error setting brightness: {e}")
             self.os_manager.speech.speak("Error setting brightness.")
+            return "Error setting brightness."
 
     def handle_switch_window(self, cmd_text=None):
         """Handle the 'switch window' command."""
         self.os_manager.switch_window()
+        return "Window switched."
 
     # ----- Aura Grid handlers -----
     def handle_show_grid(self, cmd_text=None):
         # Always show default grid; no variants required
         self.os_manager.grid.show_grid(density=None, pinned=False)
         self.os_manager.speech.speak("Grid shown")
+        return "Grid is now shown."
 
     def handle_hide_grid(self, cmd_text=None):
         self.os_manager.grid.hide_grid()
         self.os_manager.speech.speak("Grid hidden")
+        return "Grid has been hidden."
 
     def handle_click_cell(self, cmd_text):
         n = self._extract_number(cmd_text)
         if n is None:
             self.os_manager.speech.speak("Please say a valid cell number")
-            return
+            return "Please say a valid cell number."
         if self.os_manager.grid.click_cell(n, button="left"):
-            pass
+            return f"Clicked cell {n}."
+        return f"Failed to click cell {n}."
 
     def handle_double_click_cell(self, cmd_text):
         n = self._extract_number(cmd_text)
         if n is None:
             self.os_manager.speech.speak("Please say a valid cell number")
-            return
+            return "Please say a valid cell number."
         if self.os_manager.grid.double_click_cell(n):
-            pass
+            return f"Double clicked cell {n}."
+        return f"Failed to double click cell {n}."
 
     def handle_right_click_cell(self, cmd_text):
         n = self._extract_number(cmd_text)
         if n is None:
             self.os_manager.speech.speak("Please say a valid cell number")
-            return
+            return "Please say a valid cell number."
         if self.os_manager.grid.click_cell(n, button="right"):
-            pass
+            return f"Right clicked cell {n}."
+        return f"Failed to right click cell {n}."
 
     def handle_drag_from(self, cmd_text):
         n = self._extract_number(cmd_text)
         if n is None:
             self.os_manager.speech.speak("Please say a valid start cell number")
-            return
+            return "Please say a valid start cell number."
         self.os_manager.grid.start_drag(n)
         self.os_manager.speech.speak("Drag started")
+        return f"Drag started from cell {n}."
 
     def handle_drop_on(self, cmd_text):
         n = self._extract_number(cmd_text)
         if n is None:
             self.os_manager.speech.speak("Please say a valid target cell number")
-            return
+            return "Please say a valid target cell number."
         if self.os_manager.grid.drop_on(n):
             self.os_manager.speech.speak("Dropped")
+            return f"Dropped on cell {n}."
+        return f"Failed to drop on cell {n}."
 
     def handle_zoom_cell(self, cmd_text):
         n = self._extract_number(cmd_text)
         if n is None:
             self.os_manager.speech.speak("Please say a valid zoom cell number")
-            return
+            return "Please say a valid zoom cell number."
         if self.os_manager.grid.zoom_cell(n):
             self.os_manager.speech.speak("Zoomed")
+            return f"Zoomed into cell {n}."
+        return f"Failed to zoom into cell {n}."
 
     def handle_exit_zoom(self, cmd_text=None):
         if self.os_manager.grid.exit_zoom():
             self.os_manager.speech.speak("Zoom exited")
+            return "Zoom has been exited."
+        return "Failed to exit zoom."
 
     def handle_set_grid_size(self, cmd_text):
         """Handle commands like 'zoom 15' or 'grid 10' to set N x N grid divisions."""
         n = self._extract_number(cmd_text)
         if n is None:
             self.os_manager.speech.speak("Please say a grid number, for example zoom 15")
-            return
+            return "Please say a grid number, for example zoom 15."
         self.os_manager.grid.set_grid_divisions(n)
         self.os_manager.speech.speak(f"Grid set to {n} by {n}")
+        return f"Grid has been set to {n} by {n}."
 
     def _extract_number(self, text):
         if not text:
@@ -189,42 +216,52 @@ class OSCommandHandler:
     def handle_minimize_all_windows(self, cmd_text=None):
         """Handle the 'minimize all windows' command."""
         self.os_manager.minimize_all_windows()
+        return "All windows have been minimized."
 
     def handle_restore_all_windows(self, cmd_text=None):
         """Handle the 'restore windows' command."""
         self.os_manager.restore_all_windows()
+        return "All windows have been restored."
 
     def handle_maximize_current_window(self, cmd_text=None):
         """Handle the 'maximize window' command."""
         self.os_manager.maximize_current_window()
+        return "Current window has been maximized."
 
     def handle_minimize_current_window(self, cmd_text=None):
         """Handle the 'minimize window' command."""
         self.os_manager.minimize_current_window()
+        return "Current window has been minimized."
 
     def handle_close_current_window(self, cmd_text=None):
         """Handle the 'close window' command."""
         self.os_manager.close_current_window()
+        return "Current window has been closed."
 
     def handle_move_window_left(self, cmd_text=None):
         """Handle the 'move window left' command."""
         self.os_manager.move_window_left()
+        return "Window has been moved to the left."
 
     def handle_move_window_right(self, cmd_text=None):
         """Handle the 'move window right' command."""
         self.os_manager.move_window_right()
+        return "Window has been moved to the right."
 
     def handle_take_screenshot(self, cmd_text=None):
         """Handle the 'take screenshot' command."""
         self.os_manager.take_screenshot()
+        return "Screenshot has been taken."
 
     def handle_run_application(self, app_name):
         """Handle the 'run application' command."""
         if app_name:
             self.os_manager.run_application(app_name)
+            return f"Opening {app_name}."
         else:
             print("No application name provided. Please say the name of the application to run.")
             self.os_manager.speech.speak("No application name provided. Please say the name of the application to run.")
+            return "No application name provided. Please say the name of the application to run."
 
     def handle_go_to_desktop(self, _=None):
         """Press Win + D to show desktop and stay there."""
@@ -233,11 +270,11 @@ class OSCommandHandler:
             pyautogui.hotkey('win', 'd')  # Only once!
             self.os_manager.speech.speak("Showing desktop")
             print("Pressed Win+D → Desktop shown")
-            return True
+            return "Desktop is now showing."
         except Exception as e:
             print(f"Error showing desktop: {e}")
             self.os_manager.speech.speak("Failed to show desktop")
-            return False
+            return "Failed to show desktop."
 
     def handle_change_wallpaper(self, _=None):
         """Switch to desktop if not already there, change wallpaper, and stay on desktop."""
@@ -277,11 +314,11 @@ class OSCommandHandler:
 
             self.os_manager.speech.speak("Wallpaper changed")
             print("Changed wallpaper and stayed on desktop.")
-            return True
+            return "Wallpaper has been changed successfully."
         except Exception as e:
             print(f"Error changing wallpaper: {e}")
             self.os_manager.speech.speak("Could not change wallpaper")
-            return False
+            return "Failed to change wallpaper."
 
     def handle_empty_recycle_bin(self, _=None):
         """Empty the Recycle Bin silently."""
@@ -291,24 +328,26 @@ class OSCommandHandler:
             result = ctypes.windll.shell32.SHEmptyRecycleBinW(None, None, SHERB_NOCONFIRMATION)
             if result == 0:
                 self.os_manager.speech.speak("Recycle bin emptied.")
+                return "Recycle bin has been emptied."
             else:
                 self.os_manager.speech.speak("Could not empty recycle bin.")
+                return "Failed to empty recycle bin."
         except Exception as e:
             print("Empty recycle-bin error:", e)
             self.os_manager.speech.speak("Error emptying recycle bin.")
-        return True
+            return "Error emptying recycle bin."
 
     def handle_scroll_up(self, _=None):
-        self._start_scrolling(direction='up')
+        return self._start_scrolling(direction='up')
 
     def handle_scroll_down(self, _=None):
-        self._start_scrolling(direction='down')
+        return self._start_scrolling(direction='down')
 
     def handle_scroll_left(self, _=None):
-        self._start_scrolling(direction='left')
+        return self._start_scrolling(direction='left')
 
     def handle_scroll_right(self, _=None):
-        self._start_scrolling(direction='right')
+        return self._start_scrolling(direction='right')
 
     def handle_stop_scrolling(self, _=None):
         print("handle_stop_scrolling called")  # Debug print
@@ -319,9 +358,11 @@ class OSCommandHandler:
                 self._scroll_thread.join(timeout=2)
             print("Scroll thread stopped")  # Debug print
             self.os_manager.speech.speak("Stopped scrolling.")
+            return "Scrolling has been stopped."
         else:
             print("No scrolling was active")  # Debug print
             self.os_manager.speech.speak("No scrolling to stop.")
+            return "No scrolling is currently active."
 
     def _start_scrolling(self, direction):
         import pyautogui
@@ -360,6 +401,7 @@ class OSCommandHandler:
         self._scroll_thread.start()
         # Speak after starting the thread
         self.os_manager.speech.speak(f"Scrolling {direction}.")
+        return f"Scrolling {direction}."
 
     def handle_previous_tab(self, _):  return previous_tab()
     def handle_next_tab(self, _):      return next_tab()
@@ -474,11 +516,11 @@ class OSCommandHandler:
             import pyautogui
             pyautogui.hotkey('ctrl', 'c')
             self.os_manager.speech.speak("Copied.")
-            return True
+            return "Content has been copied to clipboard."
         except Exception as e:
             print(f"Error copying: {e}")
             self.os_manager.speech.speak("I was unable to copy.")
-            return False
+            return "Failed to copy content."
 
     def handle_paste(self, cmd_text=None):
         """Handle the 'paste' command by sending Ctrl+V."""
@@ -486,11 +528,11 @@ class OSCommandHandler:
             import pyautogui
             pyautogui.hotkey('ctrl', 'v')
             self.os_manager.speech.speak("Pasted.")
-            return True
+            return "Content has been pasted."
         except Exception as e:
             print(f"Error pasting: {e}")
             self.os_manager.speech.speak("I was unable to paste.")
-            return False
+            return "Failed to paste content."
 
     def handle_read_clipboard(self, cmd_text=None):
         """Reads the current content of the clipboard."""
@@ -501,13 +543,14 @@ class OSCommandHandler:
                 spoken_content = (content[:150] + '...') if len(content) > 150 else content
                 self.os_manager.speech.speak(f"The clipboard says: {spoken_content}")
                 print(f"Clipboard content: {content}")
+                return f"Clipboard: {content[:200]}" + ("..." if len(content) > 200 else "")
             else:
                 self.os_manager.speech.speak("The clipboard is empty.")
-            return True
+                return "The clipboard is empty."
         except Exception as e:
             print(f"Error reading clipboard: {e}")
             self.os_manager.speech.speak("I couldn't access the clipboard.")
-            return False
+            return "Failed to read clipboard."
 
     def handle_select_all(self, cmd_text=None):
         """Handle the 'select all' command by sending Ctrl+A."""
@@ -515,11 +558,11 @@ class OSCommandHandler:
             import pyautogui
             pyautogui.hotkey('ctrl', 'a')
             self.os_manager.speech.speak("Selected all.")
-            return True
+            return "All content has been selected."
         except Exception as e:
             print(f"Error selecting all: {e}")
             self.os_manager.speech.speak("I was unable to select all.")
-            return False
+            return "Failed to select all content."
 
     def handle_open_word(self, cmd_text=None):
         """Handle the 'open word' command."""
@@ -535,12 +578,13 @@ class OSCommandHandler:
                 word_window = word_windows[0]
                 word_window.maximize()
                 self.os_manager.speech.speak("Microsoft Word opened and maximized.")
+                return "Microsoft Word has been opened and maximized."
             # The run_application method already provides feedback
-            return True
+            return "Microsoft Word is opening."
         except Exception as e:
             print(f"Error opening Word: {e}")
             self.os_manager.speech.speak("I was unable to open Microsoft Word.")
-            return False
+            return "Failed to open Microsoft Word."
 
     def handle_save_file(self, filename=None):
         """Saves the current active file to the desktop with a given name."""
@@ -567,11 +611,11 @@ class OSCommandHandler:
             # --- NEW: Open the desktop to show the saved file ---
             time.sleep(1) # Wait a moment before showing the desktop
             self.handle_go_to_desktop()
-            return True
+            return f"File has been saved as {filename} on your desktop."
         except Exception as e:
             print(f"Error saving file: {e}")
             self.os_manager.speech.speak("I was unable to save the file.")
-            return False
+            return "Failed to save the file."
 
     def handle_remove_selection(self, cmd_text=None):
         """Handle the 'remove this' command by pressing the Delete key."""
@@ -579,11 +623,11 @@ class OSCommandHandler:
             import pyautogui
             pyautogui.press('delete')
             self.os_manager.speech.speak("Removed.")
-            return True
+            return "Selection has been removed."
         except Exception as e:
             print(f"Error removing selection: {e}")
             self.os_manager.speech.speak("I was unable to remove the selection.")
-            return False
+            return "Failed to remove selection."
 
     def handle_undo_action(self, cmd_text=None):
         """Handle the 'undo' command by sending Ctrl+Z."""
@@ -591,11 +635,11 @@ class OSCommandHandler:
             import pyautogui
             pyautogui.hotkey('ctrl', 'z')
             self.os_manager.speech.speak("Undone.")
-            return True
+            return "Action has been undone."
         except Exception as e:
             print(f"Error performing undo: {e}")
             self.os_manager.speech.speak("I was unable to undo.")
-            return False
+            return "Failed to undo action."
     
     def handle_redo_action(self, cmd_text=None):
         """Handle the 'redo' command by sending Ctrl+Y."""
@@ -603,9 +647,9 @@ class OSCommandHandler:
             import pyautogui
             pyautogui.hotkey('ctrl', 'y')
             self.os_manager.speech.speak("Redone.")
-            return True
+            return "Action has been redone."
         except Exception as e:
             print(f"Error performing redo: {e}")
             self.os_manager.speech.speak("I was unable to redo.")
-            return False
+            return "Failed to redo action."
     

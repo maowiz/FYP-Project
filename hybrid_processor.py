@@ -49,8 +49,24 @@ class HybridCommandProcessor:
 
     def process(self, text: str):
         """Process with caching and fallback"""
-        # Check cache first
-        if text.lower() in self.response_cache:
+        # Define action commands that should execute every time, not be cached
+        action_commands = [
+            "switch window", "change wallpaper", "show desktop", "minimize all windows",
+            "restore windows", "maximize window", "minimize window", "close window",
+            "move window left", "move window right", "take screenshot", "go to desktop",
+            "empty recycle bin", "scroll up", "scroll down", "scroll left", "scroll right",
+            "stop scrolling", "copy", "paste", "select all", "remove", "undo", "redo",
+            "open word", "save file", "volume up", "volume down", "mute", "maximize volume",
+            "set volume", "brightness up", "brightness down", "maximize brightness",
+            "set brightness", "show grid", "hide grid", "click cell", "double click cell",
+            "right click cell", "drag from", "drop on", "zoom cell", "exit zoom",
+            "set grid size", "open my computer", "open disk", "create folder",
+            "open folder", "delete folder", "rename folder", "go back", "run application"
+        ]
+        
+        # Check cache first, but skip action commands that need to execute every time
+        is_action_command = any(text.lower().strip().startswith(cmd) for cmd in action_commands)
+        if text.lower() in self.response_cache and not is_action_command:
             logging.info("Using cached response")
             return self.response_cache[text.lower()]
         
@@ -121,9 +137,27 @@ class HybridCommandProcessor:
                 "check internet speed", "check bmi", "read clipboard",
                 "summarize clipboard"
             ]
+            
+            # Define action commands that should execute every time, not be cached
+            action_commands = [
+                "switch window", "change wallpaper", "show desktop", "minimize all windows",
+                "restore windows", "maximize window", "minimize window", "close window",
+                "move window left", "move window right", "take screenshot", "go to desktop",
+                "empty recycle bin", "scroll up", "scroll down", "scroll left", "scroll right",
+                "stop scrolling", "copy", "paste", "select all", "remove", "undo", "redo",
+                "open word", "save file", "volume up", "volume down", "mute", "maximize volume",
+                "set volume", "brightness up", "brightness down", "maximize brightness",
+                "set brightness", "show grid", "hide grid", "click cell", "double click cell",
+                "right click cell", "drag from", "drop on", "zoom cell", "exit zoom",
+                "set grid size", "open my computer", "open disk", "create folder",
+                "open folder", "delete folder", "rename folder", "go back", "run application"
+            ]
+            
             is_dynamic_command = any(text.lower().strip().startswith(cmd) for cmd in dynamic_commands)
+            is_action_command = any(text.lower().strip().startswith(cmd) for cmd in action_commands)
 
-            if isinstance(response, str) and not is_dynamic_command:
+            # Only cache conversational responses, not action commands or dynamic commands
+            if isinstance(response, str) and not is_dynamic_command and not is_action_command:
                 self._cache_response(text.lower(), response)
                 
             return response

@@ -40,7 +40,7 @@ class FileCommandHandler:
         except Exception:
             return False
 
-    def handle_open_my_computer(self, context=None) -> bool:
+    def handle_open_my_computer(self, context=None):
         """Handle the 'open my computer' command."""
         result = self.file_manager.open_my_computer()
         if result and context is not None:
@@ -49,13 +49,14 @@ class FileCommandHandler:
             context["working_directory"] = None  # My Computer is not a specific directory
         if not result:
             self.file_manager.speech.speak("Failed to open This PC.")
-        return result
+            return "Failed to open This PC."
+        return "This PC has been opened."
 
-    def handle_open_disk(self, disk_letter, context=None) -> bool:
+    def handle_open_disk(self, disk_letter, context=None):
         """Handle the 'open disk <letter>' command."""
         if not disk_letter:
             self.file_manager.speech.speak("Please specify a disk letter.")
-            return False
+            return "Please specify a disk letter."
         result = self.file_manager.open_disk(disk_letter)
         if result and context is not None:
             disk_path = f"{disk_letter.upper()}:\\"
@@ -64,26 +65,27 @@ class FileCommandHandler:
             context["working_directory"] = disk_path
         if not result:
             self.file_manager.speech.speak(f"Failed to open disk {disk_letter.upper()}.")
-        return result
+            return f"Failed to open disk {disk_letter.upper()}."
+        return f"Disk {disk_letter.upper()} has been opened."
 
-    def handle_go_back(self, context=None) -> bool:
+    def handle_go_back(self, context=None):
         """Go up one folder **only** if currently inside an Explorer folder."""
         if self._is_in_explorer_folder():
             try:
                 import pyautogui
                 pyautogui.hotkey('alt', 'up')
                 print("Sent Alt+↑ to go up one folder.")
-                return True
+                return "Navigated to parent folder."
             except Exception as e:
                 print(f"Error sending Alt+Up: {e}")
-                return False
+                return "Failed to navigate to parent folder."
         else:
             # Optional: give feedback (or just silently ignore)
             self.file_manager.speech.speak("Not in a folder window.")
             print("Ignoring go-back: not in File Explorer inside a folder.")
-            return False
+            return "Not in a folder window."
 
-    def handle_create_folder(self, folder_name, context=None) -> bool:
+    def handle_create_folder(self, folder_name, context=None):
         """Handle the 'create folder <name>' command."""
         if not folder_name and self.voice_recognizer:
             wait_time = 0
@@ -100,7 +102,7 @@ class FileCommandHandler:
                     print(f"Error getting folder name: {e}")
             if not folder_name:
                 self.file_manager.speech.speak("No folder name provided. Creation cancelled.")
-                return False
+                return "No folder name provided. Creation cancelled."
 
         result = self.file_manager.create_folder(folder_name)
         if result and context is not None:
@@ -113,9 +115,10 @@ class FileCommandHandler:
                 self.file_manager.speech.speak("Unable to update context due to invalid working directory.")
         if not result:
             self.file_manager.speech.speak(f"Failed to create folder {folder_name}.")
-        return result
+            return f"Failed to create folder {folder_name}."
+        return f"Folder {folder_name} has been created."
 
-    def handle_open_folder(self, folder_name, context=None) -> bool:
+    def handle_open_folder(self, folder_name, context=None):
         """Handle the 'open folder <name>' command."""
         if not folder_name and self.voice_recognizer:
             wait_time = 0
@@ -132,7 +135,7 @@ class FileCommandHandler:
                     print(f"Error getting folder name: {e}")
             if not folder_name:
                 self.file_manager.speak("No folder name provided. Open cancelled.")
-                return False
+                return "No folder name provided. Open cancelled."
 
         result = self.file_manager.open_folder(folder_name)
         if result and context is not None:
@@ -146,9 +149,10 @@ class FileCommandHandler:
                 self.file_manager.speech.speak("Unable to update context due to invalid working directory.")
         if not result:
             self.file_manager.speech.speak(f"Failed to open folder {folder_name}.")
-        return result
+            return f"Failed to open folder {folder_name}."
+        return f"Folder {folder_name} has been opened."
 
-    def handle_delete_folder(self, folder_name, context=None) -> bool:
+    def handle_delete_folder(self, folder_name, context=None):
         """Handle the 'delete folder <name>' command."""
         if not folder_name and self.voice_recognizer:
             wait_time = 0
@@ -165,7 +169,7 @@ class FileCommandHandler:
                     print(f"Error getting folder name: {e}")
             if not folder_name:
                 self.file_manager.speak("No folder name provided. Deletion cancelled.")
-                return False
+                return "No folder name provided. Deletion cancelled."
 
         result = self.file_manager.delete_folder(folder_name)
         if result and context is not None:
@@ -177,9 +181,10 @@ class FileCommandHandler:
             context["working_directory"] = target_dir if target_dir and os.path.isdir(target_dir) else None
         if not result:
             self.file_manager.speech.speak(f"Failed to delete folder {folder_name}.")
-        return result
+            return f"Failed to delete folder {folder_name}."
+        return f"Folder {folder_name} has been deleted."
 
-    def handle_rename_folder(self, old_name, new_name, context=None) -> bool:
+    def handle_rename_folder(self, old_name, new_name, context=None):
         """Handle the 'rename folder <old_name> to <new_name>' command."""
         if not old_name and self.voice_recognizer:
             wait_time = 0
@@ -196,7 +201,7 @@ class FileCommandHandler:
                     print(f"Error getting old folder name: {e}")
             if not old_name:
                 self.file_manager.speak("No folder name provided. Rename cancelled.")
-                return False
+                return "No folder name provided. Rename cancelled."
 
         if not new_name and self.voice_recognizer:
             wait_time = 0
@@ -213,7 +218,7 @@ class FileCommandHandler:
                     print(f"Error getting new folder name: {e}")
             if not new_name:
                 self.file_manager.speak("No new name provided. Rename cancelled.")
-                return False
+                return "No new name provided. Rename cancelled."
 
         result = self.file_manager.rename_folder(old_name, new_name)
         if result and context is not None:
@@ -228,4 +233,5 @@ class FileCommandHandler:
                 self.file_manager.speech.speak("Unable to update context due to invalid working directory.")
         if not result:
             self.file_manager.speech.speak(f"Failed to rename folder {old_name} to {new_name}.")
-        return result
+            return f"Failed to rename folder {old_name} to {new_name}."
+        return f"Folder {old_name} has been renamed to {new_name}."

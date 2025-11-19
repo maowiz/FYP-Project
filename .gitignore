@@ -1,4 +1,6 @@
-# Python bytecode and cache
+# ============================================
+# PYTHON BYTECODE AND CACHE
+# ============================================
 __pycache__/
 *.pyc
 *.pyo
@@ -6,64 +8,136 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+*.egg
 
-# Virtual Environment
+# ============================================
+# VIRTUAL ENVIRONMENTS
+# ============================================
 venv/
 env/
 .venv/
+ENV/
 
-# Sensitive files - VERY IMPORTANT
+# ============================================
+# SENSITIVE FILES - NEVER PUSH
+# ============================================
 credentials.json
 token.pickle
 *.token
 .env
 .env.local
+.env.*.local
+config.json.bak
 
-# IDE/Editor specific files
+# ============================================
+# IDE/EDITOR SPECIFIC FILES
+# ============================================
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-project
+*.sublime-workspace
 .DS_Store
 
-# Operating System files
+# ============================================
+# OPERATING SYSTEM FILES
+# ============================================
 Thumbs.db
 desktop.ini
+.directory
 
-# Node modules and frontend dependencies
+# ============================================
+# NODE.JS AND FRONTEND DEPENDENCIES
+# ============================================
 node_modules/
 package-lock.json
+yarn.lock
+.npm
+.eslintcache
 
-# Large model files - DO NOT PUSH
+# ============================================
+# LARGE MODEL FILES - DO NOT PUSH
+# ============================================
+# Qwen model and other LLM models
 *.gguf
 qwen2.5-0.5b-instruct-q4_k_m.gguf
+qwen*.gguf
 *.bin
 *.safetensors
+models/
 
-# ML/AI model and pickle files
+# ============================================
+# ML/AI MODEL AND PICKLE FILES
+# ============================================
 *.pkl
 *.pickle
 face_encodings.pkl
 labels.pkl
 face_database.pkl
+intent_classifier.pkl
+*.joblib
 
-# Temporary and log files
+# ============================================
+# TEMPORARY AND LOG FILES
+# ============================================
 *.log
 *.tmp
 *.swp
 notes.txt
 todo_list.txt
+*.bak
+*.backup
 
-# Test files
+# ============================================
+# TEST FILES
+# ============================================
 websocket_test.py
 whisper_test.py
+test_*.py
+*_test.py
 
-# Face authentication dataset (too large)
+# ============================================
+# FACE AUTHENTICATION DATASET (TOO LARGE)
+# ============================================
 auth/dataset/
+auth/models/
 
-# Frontend dist and build
+# ============================================
+# FRONTEND BUILD AND CACHE
+# ============================================
 frontend\ advance/dist/
 frontend\ advance/node_modules/
 frontend\ advance/.vite/
+frontend\ advance/.next/
+frontend\ advance/out/
+frontend\ advance/build/
+
+# ============================================
+# FRONTEND CACHE AND TEMPORARY FILES
+# ============================================
+frontend\ advance/.turbo/
+frontend\ advance/.cache/
+frontend\ advance/*.tsbuildinfo
+
+# ============================================
+# LARGE DATASETS AND CACHE
+# ============================================
+dataset/
+*.csv
+*.xlsx
+*.db
+*.sqlite
+*.sqlite3
+
+# ============================================
+# MISCELLANEOUS
+# ============================================
+.DS_Store
+.AppleDouble
+.LSOverride
+*.pem
+*.key
+*.crt
 
 
