@@ -16,7 +16,16 @@ import threading
 import queue
 import json
 from assistant_state import is_speaking  # Make sure to import is_speaking
-from typing import Optional, Any, Union, cast, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, Union, cast, TYPE_CHECKING
+from dataclasses import dataclass
+
+# --- TEST MODE SWITCH ---
+# Set environment variable TEST_MODE=1 to bypass face auth for testing
+TEST_MODE = os.getenv("TEST_MODE", "0") == "1"
+if TEST_MODE:
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.warning("⚠️ TEST MODE ENABLED - Face authentication will be bypassed!")
+# --- END TEST MODE ---
 
 if TYPE_CHECKING:
     from speech import Speech
@@ -405,15 +414,24 @@ def main(start_ws: bool = True):
         voice_recognizer.pause_listening()
         logging.info("Voice recognition started in PAUSED state (awaiting UI activation)")
     
-    # --- NEW: Send face auth pending state to UI ---
-    try:
-        ui_message_queue.put({"type": "state", "phase": "face_auth"})
-    except Exception as e:
-        logging.error(f"Error sending face auth pending state: {e}")
+    # --- TEST MODE: Auto-grant face auth ---
+    if TEST_MODE:
+        logging.warning("🧪 TEST MODE: Auto-granting face authentication")
+        set_face_auth_granted("TestUser")
+        # Auto-resume listening since there's no UI
+        if voice_recognizer:
+            voice_recognizer.resume_listening()
+            logging.warning("🧪 TEST MODE: Auto-resumed voice recognition")
+    else:
+        # --- NEW: Send face auth pending state to UI ---
+        try:
+            ui_message_queue.put({"type": "state", "phase": "face_auth"})
+        except Exception as e:
+            logging.error(f"Error sending face auth pending state: {e}")
 
-    if not face_auth_gate.is_set():
-        logging.info("Awaiting face authentication confirmation...")
-        # We do NOT wait() here anymore. We let the loop handle it.
+        if not face_auth_gate.is_set():
+            logging.info("Awaiting face authentication confirmation...")
+            # We do NOT wait() here anymore. We let the loop handle it.
     
     global dictation_mode
     dictation_mode = False
@@ -432,13 +450,7 @@ def main(start_ws: bool = True):
                     text_to_say = ui_command.get("text", "")
                     if speech and text_to_say:
                         logging.info(f"UI requested speech: {text_to_say}")
-                        if voice_recognizer:
-                            voice_recognizer.pause_listening()
-
                         speech.speak(text_to_say)
-
-                        if voice_recognizer and (dictation_mode or note_taking_mode):
-                            voice_recognizer.resume_listening()
                     continue
 
                 # --- SECURITY GATE ---
@@ -504,6 +516,38 @@ def main(start_ws: bool = True):
             if transcription:
                 transcription_lower = transcription.lower().strip()
 
+                # --- HINT OFFLINE STT ABOUT INTENT (LLM vs COMMAND) ---
+                # This helps the offline Vosk engine decide whether to use a strict
+                # command grammar (high accuracy for commands) or a free vocabulary
+                # (better for LLM-style conversational queries).
+                try:
+                    llm_triggers = [
+                        "can you tell me", "tell me about", "can you explain",
+                        "explain", "what is", "who is", "why is", "how to",
+                        "how do", "write a", "write an", "send to chatgpt",
+                        "summarize", "translate", "let's talk",
+                    ]
+                    command_triggers = [
+                        "show desktop", "go to desktop", "open folder", "create folder",
+                        "increase volume", "decrease volume", "set volume",
+                        "increase brightness", "decrease brightness", "set brightness",
+                        "show grid", "hide grid", "click cell", "double click", "right click",
+                        "drag from", "drop on", "zoom cell", "exit zoom", "set grid size",
+                        "take screenshot", "take photo", "open camera",
+                        "open calculator", "open notepad", "open word", "run application",
+                        "switch window", "maximize window", "minimize window", "close window",
+                    ]
+
+                    if voice_recognizer:
+                        if any(trigger in transcription_lower for trigger in llm_triggers):
+                            # Treat as free-form / LLM-style speech when offline.
+                            voice_recognizer.set_mode("DICTATION")
+                        elif any(cmd in transcription_lower for cmd in command_triggers):
+                            # Treat as a structured command when offline.
+                            voice_recognizer.set_mode("COMMAND")
+                except Exception as _intent_err:
+                    logging.error(f"Error while hinting STT intent mode: {_intent_err}")
+
                 # --- NOTE-TAKING MODE LOGIC ---
                 if transcription_lower in ["take a note", "add a note", "new note", "write a note", "note this down"]:
                     if not note_taking_mode:
@@ -543,6 +587,9 @@ def main(start_ws: bool = True):
                         dictation_mode = True
                         if speech:
                             speech.speak("Dictation mode started.")
+                        if voice_recognizer:
+                            # Ensure offline STT, if active, uses free vocabulary during dictation.
+                            voice_recognizer.set_mode("DICTATION")
                         try:
                             ui_message_queue.put({"type": "state", "phase": "dictation"})
                         except Exception as e:
@@ -554,6 +601,9 @@ def main(start_ws: bool = True):
                         dictation_mode = False
                         if speech:
                             speech.speak("Dictation mode stopped.")
+                        if voice_recognizer:
+                            # Return offline STT, if active, to strict command mode.
+                            voice_recognizer.set_mode("COMMAND")
                         try:
                             ui_message_queue.put({"type": "state", "phase": "listening"})
                         except Exception as e:

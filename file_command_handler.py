@@ -1,237 +1,138 @@
-import os  # Added to resolve NameError for os.path.basename and os.path.join
+import os
 
 class FileCommandHandler:
     def __init__(self, file_manager, voice_recognizer=None):
         self.file_manager = file_manager
         self.voice_recognizer = voice_recognizer
 
-    # ---------- NEW HELPER ----------
-    def _is_in_explorer_folder(self):
-        """Return True if the currently-focused window is File Explorer
-           and its current location is a real directory (not Desktop or This PC)."""
-        try:
-            import win32gui
-            import pythoncom
-            import win32com.client
-            import os
-            import urllib.parse
-
-            hwnd = win32gui.GetForegroundWindow()
-            if not hwnd:
-                return False
-
-            if win32gui.GetClassName(hwnd) not in ("CabinetWClass", "ExplorerWClass"):
-                return False
-
-            pythoncom.CoInitialize()
-            try:
-                shell = win32com.client.Dispatch("Shell.Application")
-                for w in shell.Windows():
-                    if w.hwnd == hwnd:
-                        url = w.LocationURL
-                        if url.startswith("file:///"):
-                            path = urllib.parse.unquote(url[8:].replace("/", "\\"))
-                            if os.path.isdir(path):
-                                return True
-                        break
-            finally:
-                pythoncom.CoUninitialize()
-            return False
-        except Exception:
-            return False
-
     def handle_open_my_computer(self, context=None):
         """Handle the 'open my computer' command."""
-        result = self.file_manager.open_my_computer()
-        if result and context is not None:
+        success, message = self.file_manager.open_my_computer()
+        if success and context is not None:
             context["last_opened_item"] = None
             context["last_created_folder"] = None
             context["working_directory"] = None  # My Computer is not a specific directory
-        if not result:
-            self.file_manager.speech.speak("Failed to open This PC.")
-            return "Failed to open This PC."
-        return "This PC has been opened."
+        return message
 
     def handle_open_disk(self, disk_letter, context=None):
         """Handle the 'open disk <letter>' command."""
         if not disk_letter:
-            self.file_manager.speech.speak("Please specify a disk letter.")
-            return "Please specify a disk letter."
-        result = self.file_manager.open_disk(disk_letter)
-        if result and context is not None:
+            return "Please specify a disk letter"
+        success, message = self.file_manager.open_disk(disk_letter)
+        if success and context is not None:
             disk_path = f"{disk_letter.upper()}:\\"
             context["last_opened_item"] = (disk_path, disk_path)
             context["last_created_folder"] = None
             context["working_directory"] = disk_path
-        if not result:
-            self.file_manager.speech.speak(f"Failed to open disk {disk_letter.upper()}.")
-            return f"Failed to open disk {disk_letter.upper()}."
-        return f"Disk {disk_letter.upper()} has been opened."
+        return message
 
     def handle_go_back(self, context=None):
-        """Go up one folder **only** if currently inside an Explorer folder."""
-        if self._is_in_explorer_folder():
-            try:
-                import pyautogui
-                pyautogui.hotkey('alt', 'up')
-                print("Sent Alt+↑ to go up one folder.")
-                return "Navigated to parent folder."
-            except Exception as e:
-                print(f"Error sending Alt+Up: {e}")
-                return "Failed to navigate to parent folder."
-        else:
-            # Optional: give feedback (or just silently ignore)
-            self.file_manager.speech.speak("Not in a folder window.")
-            print("Ignoring go-back: not in File Explorer inside a folder.")
-            return "Not in a folder window."
+        """Go back to parent directory if in File Explorer."""
+        success, message = self.file_manager.go_back()
+        return message
 
     def handle_create_folder(self, folder_name, context=None):
         """Handle the 'create folder <name>' command."""
-        if not folder_name and self.voice_recognizer:
-            wait_time = 0
-            max_wait = 5
-            self.file_manager.speech.speak("What do you want to name the new folder?")
-            while wait_time < max_wait:
-                try:
-                    folder_name = self.voice_recognizer.get_transcription()
-                    if folder_name:
-                        break
-                    time.sleep(0.5)
-                    wait_time += 0.5
-                except Exception as e:
-                    print(f"Error getting folder name: {e}")
-            if not folder_name:
-                self.file_manager.speech.speak("No folder name provided. Creation cancelled.")
-                return "No folder name provided. Creation cancelled."
-
-        result = self.file_manager.create_folder(folder_name)
-        if result and context is not None:
-            target_dir = self.file_manager.context["working_directory"]
-            if target_dir and os.path.isdir(target_dir):
-                context["last_created_folder"] = (target_dir, folder_name)
-                context["last_opened_item"] = (target_dir, folder_name)  # Folder is opened after creation
-                context["working_directory"] = os.path.join(target_dir, folder_name)
-            else:
-                self.file_manager.speech.speak("Unable to update context due to invalid working directory.")
-        if not result:
-            self.file_manager.speech.speak(f"Failed to create folder {folder_name}.")
-            return f"Failed to create folder {folder_name}."
-        return f"Folder {folder_name} has been created."
+        success, message = self.file_manager.create_folder(folder_name)
+        
+        if success and context is not None:
+            # Sync context from file_manager
+            fm_context = self.file_manager.context
+            if fm_context.get("working_directory"):
+                context["working_directory"] = fm_context["working_directory"]
+                context["last_created_folder"] = fm_context.get("last_created_folder")
+                context["last_opened_item"] = fm_context.get("last_opened_item")
+                print(f"DEBUG: Context synced successfully: {context}")
+        
+        return message
 
     def handle_open_folder(self, folder_name, context=None):
         """Handle the 'open folder <name>' command."""
-        if not folder_name and self.voice_recognizer:
-            wait_time = 0
-            max_wait = 5
-            self.file_manager.speech.speak("What folder would you like to open?")
-            while wait_time < max_wait:
-                try:
-                    folder_name = self.voice_recognizer.get_transcription()
-                    if folder_name:
-                        break
-                    time.sleep(0.5)
-                    wait_time += 0.5
-                except Exception as e:
-                    print(f"Error getting folder name: {e}")
-            if not folder_name:
-                self.file_manager.speak("No folder name provided. Open cancelled.")
-                return "No folder name provided. Open cancelled."
-
-        result = self.file_manager.open_folder(folder_name)
-        if result and context is not None:
-            target_dir = self.file_manager.context["working_directory"]
-            if target_dir and os.path.isdir(target_dir):
-                new_path = os.path.join(target_dir, folder_name)
-                context["last_opened_item"] = (new_path, folder_name)
+        success, message = self.file_manager.open_folder(folder_name)
+        
+        if success and context is not None:
+            # Sync context from file_manager
+            fm_context = self.file_manager.context
+            if fm_context.get("working_directory"):
+                context["working_directory"] = fm_context["working_directory"]
+                context["last_opened_item"] = fm_context.get("last_opened_item")
                 context["last_created_folder"] = None
-                context["working_directory"] = new_path  # Update to the opened folder
-            else:
-                self.file_manager.speech.speak("Unable to update context due to invalid working directory.")
-        if not result:
-            self.file_manager.speech.speak(f"Failed to open folder {folder_name}.")
-            return f"Failed to open folder {folder_name}."
-        return f"Folder {folder_name} has been opened."
+                print(f"DEBUG: Context synced successfully: {context}")
+        
+        return message
 
     def handle_delete_folder(self, folder_name, context=None):
         """Handle the 'delete folder <name>' command."""
-        if not folder_name and self.voice_recognizer:
-            wait_time = 0
-            max_wait = 5
-            self.file_manager.speak("What folder would you like to delete?")
-            while wait_time < max_wait:
-                try:
-                    folder_name = self.voice_recognizer.get_transcription()
-                    if folder_name:
-                        break
-                    time.sleep(0.5)
-                    wait_time += 0.5
-                except Exception as e:
-                    print(f"Error getting folder name: {e}")
-            if not folder_name:
-                self.file_manager.speak("No folder name provided. Deletion cancelled.")
-                return "No folder name provided. Deletion cancelled."
-
-        result = self.file_manager.delete_folder(folder_name)
-        if result and context is not None:
-            target_dir = self.file_manager.context["working_directory"]
-            if context.get("last_created_folder") and context["last_created_folder"][1] == folder_name:
-                context["last_created_folder"] = None
-            if context.get("last_opened_item") and context["last_opened_item"][1] == folder_name:
-                context["last_opened_item"] = None
-            context["working_directory"] = target_dir if target_dir and os.path.isdir(target_dir) else None
-        if not result:
-            self.file_manager.speech.speak(f"Failed to delete folder {folder_name}.")
-            return f"Failed to delete folder {folder_name}."
-        return f"Folder {folder_name} has been deleted."
+        success, message = self.file_manager.delete_folder(folder_name)
+        
+        if success and context is not None:
+            # Sync context from file_manager
+            fm_context = self.file_manager.context
+            if fm_context.get("working_directory"):
+                context["working_directory"] = fm_context["working_directory"]
+                context["last_opened_item"] = fm_context.get("last_opened_item")
+                
+                # Clear references to deleted folder
+                if context.get("last_created_folder") and context["last_created_folder"][1] == folder_name:
+                    context["last_created_folder"] = None
+                    
+                print(f"DEBUG: Context synced successfully: {context}")
+        
+        return message
 
     def handle_rename_folder(self, old_name, new_name, context=None):
         """Handle the 'rename folder <old_name> to <new_name>' command."""
-        if not old_name and self.voice_recognizer:
-            wait_time = 0
-            max_wait = 5
-            self.file_manager.speak("What is the current name of the folder?")
-            while wait_time < max_wait:
-                try:
-                    old_name = self.voice_recognizer.get_transcription()
-                    if old_name:
-                        break
-                    time.sleep(0.5)
-                    wait_time += 0.5
-                except Exception as e:
-                    print(f"Error getting old folder name: {e}")
-            if not old_name:
-                self.file_manager.speak("No folder name provided. Rename cancelled.")
-                return "No folder name provided. Rename cancelled."
+        success, message = self.file_manager.rename_folder(old_name, new_name)
+        
+        if success and context is not None:
+            # Sync context from file_manager
+            fm_context = self.file_manager.context
+            if fm_context.get("working_directory"):
+                context["working_directory"] = fm_context["working_directory"]
+                context["last_created_folder"] = fm_context.get("last_created_folder")
+                context["last_opened_item"] = fm_context.get("last_opened_item")
+                print(f"DEBUG: Context synced successfully: {context}")
+        
+        return message
 
-        if not new_name and self.voice_recognizer:
-            wait_time = 0
-            max_wait = 5
-            self.file_manager.speak(f"What would you like to rename {old_name} to?")
-            while wait_time < max_wait:
-                try:
-                    new_name = self.voice_recognizer.get_transcription()
-                    if new_name:
-                        break
-                    time.sleep(0.5)
-                    wait_time += 0.5
-                except Exception as e:
-                    print(f"Error getting new folder name: {e}")
-            if not new_name:
-                self.file_manager.speak("No new name provided. Rename cancelled.")
-                return "No new name provided. Rename cancelled."
-
-        result = self.file_manager.rename_folder(old_name, new_name)
-        if result and context is not None:
-            target_dir = self.file_manager.context["working_directory"]
-            if target_dir and os.path.isdir(target_dir):
-                if context.get("last_created_folder") and context["last_created_folder"][1] == old_name:
-                    context["last_created_folder"] = (target_dir, new_name)
-                if context.get("last_opened_item") and context["last_opened_item"][1] == old_name:
-                    context["last_opened_item"] = (target_dir, new_name)
-                context["working_directory"] = target_dir
+    def handle_open_file(self, file_name, context=None):
+        """Handle the 'open file <name>' command.
+        If the provided name lacks an extension, the method will search the target directory
+        for a file with the same base name and any extension, then open the first match.
+        """
+        if not file_name:
+            return "Please specify a file name"
+        
+        try:
+            # Get smart target directory
+            target_dir, location_name = self.file_manager._get_smart_target_directory()
+            
+            # Determine if an extension was supplied
+            base_name, ext = os.path.splitext(file_name)
+            if ext:
+                candidate_name = file_name
             else:
-                self.file_manager.speech.speak("Unable to update context due to invalid working directory.")
-        if not result:
-            self.file_manager.speech.speak(f"Failed to rename folder {old_name} to {new_name}.")
-            return f"Failed to rename folder {old_name} to {new_name}."
-        return f"Folder {old_name} has been renamed to {new_name}."
+                # Search for a file with the same base name and any extension
+                candidates = [f for f in os.listdir(target_dir)
+                              if os.path.isfile(os.path.join(target_dir, f))
+                              and os.path.splitext(f)[0].lower() == base_name.lower()]
+                if not candidates:
+                    return f"File {file_name} not found in {location_name}"
+                candidate_name = candidates[0]
+            
+            file_path = os.path.join(target_dir, candidate_name)
+            if not os.path.exists(file_path) or not os.path.isfile(file_path):
+                return f"File {candidate_name} not found in {location_name}"
+            
+            # Open the file
+            os.startfile(file_path)
+            
+            if context is not None:
+                context["working_directory"] = target_dir
+                context["last_opened_item"] = (target_dir, candidate_name)
+            
+            return f"File {candidate_name} opened from {location_name}"
+            
+        except Exception as e:
+            print(f"Error opening file '{file_name}': {e}")
+            return f"Error opening file {file_name}"

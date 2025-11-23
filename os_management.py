@@ -15,185 +15,28 @@ import win32api
 import win32com.client
 import urllib.parse
 from grid_manager import GridManager
+from comtypes import GUID, IUnknown, COMMETHOD, HRESULT
+from ctypes import c_wchar_p, c_uint, POINTER, c_void_p
+from comtypes.client import CreateObject
 
-
-class OSManagement:
-    def __init__(self, speech):
-        self.speech = speech
-        self.system = platform.system()
-        self.volume_interface = None
-        self.brightness_interface = None
-        self.window_handles = []
-        self.current_window_index = 0
-        if not hasattr(self, 'context'):
-            self.context = {}
-
-        if self.system != "Windows":
-            print("This application only supports Windows.")
-            return
-
-        try:
-            pythoncom.CoInitialize()
-            devices = AudioUtilities.GetSpeakers()
-            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-            self.volume_interface = interface.QueryInterface(IAudioEndpointVolume)
-        except Exception as e:
-            print(f"Error initializing Windows audio interface: {e}")
-        finally:
-            pythoncom.CoUninitialize()
-
-        try:
-            self.brightness_interface = wmi.WMI(namespace="wmi")
-        except Exception as e:
-            print(f"Error initializing Windows brightness interface: {e}")
-            self.brightness_interface = None
-
-        pyautogui.FAILSAFE = True
-        pyautogui.PAUSE = 0
-        self._update_window_handles()
-        self.grid = GridManager(speech)
-
-    def _update_window_handles(self):
-        # This method remains the same
-        pass
-
-    def _restore_and_focus(self, hwnd):
-        # This method remains the same
-        pass
-
-    def switch_window(self) -> Tuple[bool, str]:
-        try:
-            self._update_window_handles()
-            if not self.window_handles:
-                return False, "No windows available to switch to."
-            
-            # Logic to find the next window
-            current_hwnd = win32gui.GetForegroundWindow()
-            try:
-                current_idx = self.window_handles.index(current_hwnd)
-                next_idx = (current_idx + 1) % len(self.window_handles)
-            except ValueError:
-                next_idx = 0
-
-            target_hwnd = self.window_handles[next_idx]
-            target_title = win32gui.GetWindowText(target_hwnd).split(' - ')[-1]
-
-            if self._restore_and_focus(target_hwnd):
-                return True, f"Switched to {target_title}"
-            else:
-                return False, f"Could not switch to {target_title}"
-        except Exception as e:
-            return False, "Error switching window."
-
-    def volume_up(self) -> Tuple[bool, str]:
-        try:
-            pyautogui.press('volumeup')
-            return True, "Volume increased."
-        except Exception:
-            return False, "Error increasing volume."
-
-    def volume_down(self) -> Tuple[bool, str]:
-        try:
-            pyautogui.press('volumedown')
-            return True, "Volume decreased."
-        except Exception:
-            return False, "Error decreasing volume."
-
-    def mute_toggle(self) -> Tuple[bool, str]:
-        try:
-            pyautogui.press('volumemute')
-            return True, "Mute toggled."
-        except Exception:
-            return False, "Error toggling mute."
-
-    def maximize_current_window(self) -> Tuple[bool, str]:
-        try:
-            hwnd = win32gui.GetForegroundWindow()
-            if not hwnd: return False, "No active window found."
-            if win32gui.GetWindowPlacement(hwnd)[1] == win32con.SW_SHOWMAXIMIZED:
-                win32gui.ShowWindow(hwnd, win32con.SW_NORMAL)
-                return True, "Window restored."
-            else:
-                win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
-                return True, "Window maximized."
-        except Exception:
-            return False, "Error maximizing window."
-
-    def minimize_current_window(self) -> Tuple[bool, str]:
-        try:
-            pyautogui.hotkey('win', 'down')
-            return True, "Window minimized."
-        except Exception:
-            return False, "Error minimizing window."
-
-    def close_current_window(self) -> Tuple[bool, str]:
-        try:
-            pyautogui.hotkey('alt', 'f4')
-            return True, "Window closed."
-        except Exception:
-            return False, "Error closing window."
-
-    def take_screenshot(self) -> Tuple[bool, str]:
-        try:
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-            desktop_path = os.path.join(os.path.expanduser("~"), 'Desktop')
-            if not os.path.isdir(desktop_path): os.makedirs(desktop_path)
-            path = os.path.join(desktop_path, f"screenshot_{timestamp}.png")
-            pyautogui.screenshot(path)
-            return True, "Screenshot saved to desktop."
-        except Exception:
-            return False, "Error taking screenshot."
-
-    def run_application(self, app_name: str) -> Tuple[bool, str]:
-        if not app_name: return False, "Please specify an application."
-        try:
-            pyautogui.press('win')
-            time.sleep(0.5)
-            pyautogui.write(app_name, interval=0.05)
-            time.sleep(0.5)
-            pyautogui.press('enter')
-            return True, f"Opening {app_name}."
-        except Exception:
-            return False, f"Could not open {app_name}."
-            
-    def change_wallpaper(self) -> Tuple[bool, str]:
-        try:
-            # This is a complex UI automation, we'll keep it simple
-            pyautogui.hotkey('win', 'd') # Show desktop
-            time.sleep(0.5)
-            pyautogui.rightClick(100, 100) # Right click on a safe spot
-            time.sleep(0.5)
-            pyautogui.press('n') # 'Next desktop background'
-            time.sleep(0.2)
-            pyautogui.press('esc') # Close context menu
-            return True, "Wallpaper changed."
-        except Exception:
-            return False, "Could not change wallpaper."
-            
-    def minimize_all_windows(self) -> Tuple[bool, str]:
-        try:
-            pyautogui.hotkey('win', 'd')
-            return True, "Showing desktop."
-        except Exception:
-            return False, "Could not show desktop."
-
-import platform
-from typing import Optional, List
-from comtypes import CLSCTX_ALL
-from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-import pythoncom
-import wmi
-import pyautogui
-import time
-import os
-from datetime import datetime
-import win32gui
-import win32con
-import win32process
-import win32api
-import win32com.client
-import urllib.parse
-from grid_manager import GridManager
+class IDesktopWallpaper(IUnknown):
+    _iid_ = GUID("{B92B56A9-8B55-4E14-9A89-0199BBB6F93B}")
+    _methods_ = [
+        COMMETHOD([], HRESULT, "SetWallpaper", (['in'], c_wchar_p, "monitorID"), (['in'], c_wchar_p, "wallpaper")),
+        COMMETHOD([], HRESULT, "GetWallpaper", (['in'], c_wchar_p, "monitorID"), (['out'], POINTER(c_wchar_p), "wallpaper")),
+        COMMETHOD([], HRESULT, "GetMonitorDevicePathAt", (['in'], c_uint, "monitorIndex"), (['out'], POINTER(c_wchar_p), "monitorID")),
+        COMMETHOD([], HRESULT, "GetMonitorDevicePathCount", (['out'], POINTER(c_uint), "count")),
+        COMMETHOD([], HRESULT, "GetMonitorRECT", (['in'], c_wchar_p, "monitorID"), (['out'], c_void_p, "displayRect")),
+        COMMETHOD([], HRESULT, "SetBackgroundColor", (['in'], c_uint, "color")),
+        COMMETHOD([], HRESULT, "GetBackgroundColor", (['out'], POINTER(c_uint), "color")),
+        COMMETHOD([], HRESULT, "SetPosition", (['in'], c_uint, "position")),
+        COMMETHOD([], HRESULT, "GetPosition", (['out'], POINTER(c_uint), "position")),
+        COMMETHOD([], HRESULT, "SetSlideshowOptions", (['in'], c_uint, "options"), (['in'], c_uint, "slideshowTick")),
+        COMMETHOD([], HRESULT, "GetSlideshowOptions", (['out'], POINTER(c_uint), "options"), (['out'], POINTER(c_uint), "slideshowTick")),
+        COMMETHOD([], HRESULT, "AdvanceSlideshow", (['in'], c_wchar_p, "monitorID"), (['in'], c_uint, "direction")),
+        COMMETHOD([], HRESULT, "GetStatus", (['out'], POINTER(c_uint), "state")),
+        COMMETHOD([], HRESULT, "Enable", (['in'], c_uint, "enable")),
+    ]
 
 class OSManagement:
     def __init__(self, speech):
@@ -208,7 +51,6 @@ class OSManagement:
 
         if self.system != "Windows":
             print("This application only supports Windows.")
-            self.speech.speak("This application only supports Windows.")
             return
 
         try:
@@ -218,7 +60,6 @@ class OSManagement:
             self.volume_interface = interface.QueryInterface(IAudioEndpointVolume)
         except Exception as e:
             print(f"Error initializing Windows audio interface: {e}")
-            self.speech.speak("Error initializing audio control. Using hotkey fallback.")
         finally:
             pythoncom.CoUninitialize()
 
@@ -226,7 +67,6 @@ class OSManagement:
             self.brightness_interface = wmi.WMI(namespace="wmi")
         except Exception as e:
             print(f"Error initializing Windows brightness interface: {e}")
-            self.speech.speak("Error initializing brightness control. Using hotkey fallback.")
             self.brightness_interface = None
 
         pyautogui.FAILSAFE = True
@@ -340,27 +180,25 @@ class OSManagement:
             print(f"Error focusing window ({window_text}, HWND: {hwnd}): {e}")
             return False
 
-    def switch_window(self) -> bool:
+    def switch_window(self) -> Tuple[bool, str]:
         try:
             foreground_at_call_start = win32gui.GetForegroundWindow()
             self._update_window_handles()
 
             if not self.window_handles:
                 print("No windows available to switch to.")
-                self.speech.speak("No windows available to switch to.")
-                return False
+                return False, "No windows available to switch to."
 
             if len(self.window_handles) == 1:
                 target_hwnd_single = self.window_handles[0]
                 current_text = win32gui.GetWindowText(target_hwnd_single).split(' - ')[-1]
                 if target_hwnd_single != foreground_at_call_start:
                     if self._restore_and_focus(target_hwnd_single):
-                        self.speech.speak(f"Switched to {current_text}")
+                        return True, f"Switched to {current_text}"
                     else:
-                        self.speech.speak(f"Could not switch to {current_text}")
+                        return False, f"Could not switch to {current_text}"
                 else:
-                    self.speech.speak(f"Only {current_text} is open.")
-                return True
+                    return True, f"Only {current_text} is open."
 
             prospective_next_idx = (self.current_window_index + 1) % len(self.window_handles)
             if len(self.window_handles) > 1 and self.window_handles[prospective_next_idx] == foreground_at_call_start:
@@ -375,18 +213,15 @@ class OSManagement:
             if self._restore_and_focus(target_hwnd):
                 active_title = win32gui.GetWindowText(win32gui.GetForegroundWindow())
                 print(f"Switched to: '{active_title}' (Targeted: '{target_title}')")
-                self.speech.speak(f"Switched to {active_title.split(' - ')[-1]}")
-                return True
+                return True, f"Switched to {active_title.split(' - ')[-1]}"
             else:
                 print(f"Failed to switch to '{target_title}'.")
-                self.speech.speak(f"Could not switch to {target_title.split(' - ')[-1]}")
-                return False
+                return False, f"Could not switch to {target_title.split(' - ')[-1]}"
         except Exception as e:
             print(f"Error in switch_window: {e}")
-            self.speech.speak("Error switching window")
             self.current_window_index = 0
             self._update_window_handles()
-            return False
+            return False, "Error switching window"
 
     def get_active_explorer_path(self) -> Optional[str]:
         """Get the path of the active File Explorer window."""
@@ -445,7 +280,6 @@ class OSManagement:
             return paths
         except Exception as e:
             print(f"Error getting open File Explorer paths: {e}")
-            self.speech.speak("Error detecting open folders.")
             return []
         finally:
             pythoncom.CoUninitialize()
@@ -462,7 +296,7 @@ class OSManagement:
             print(f"Error getting active window title: {e}")
             return None
 
-    def volume_up(self) -> bool:
+    def volume_up(self) -> Tuple[bool, str]:
         if self.volume_interface:
             try:
                 pythoncom.CoInitialize()
@@ -470,7 +304,7 @@ class OSManagement:
                 new_volume = min(1.0, current_volume + 0.1)
                 self.volume_interface.SetMasterVolumeLevelScalar(new_volume, None)
                 print(f"Volume increased to {int(new_volume * 100)}%")
-                return True
+                return True, "Volume increased"
             except Exception as e:
                 print(f"Error (pycaw) volume up: {e}. Fallback.")
             finally:
@@ -478,13 +312,12 @@ class OSManagement:
         try:
             pyautogui.press('volumeup')
             print("Volume up (hotkey)")
-            return True
+            return True, "Volume increased"
         except Exception as e:
             print(f"Error (hotkey) volume up: {e}")
-            self.speech.speak("Error increasing volume")
-            return False
+            return False, "Error increasing volume"
 
-    def volume_down(self) -> bool:
+    def volume_down(self) -> Tuple[bool, str]:
         if self.volume_interface:
             try:
                 pythoncom.CoInitialize()
@@ -492,7 +325,7 @@ class OSManagement:
                 new_volume = max(0.0, current_volume - 0.1)
                 self.volume_interface.SetMasterVolumeLevelScalar(new_volume, None)
                 print(f"Volume decreased to {int(new_volume * 100)}%")
-                return True
+                return True, "Volume decreased"
             except Exception as e:
                 print(f"Error (pycaw) volume down: {e}. Fallback.")
             finally:
@@ -500,13 +333,12 @@ class OSManagement:
         try:
             pyautogui.press('volumedown')
             print("Volume down (hotkey)")
-            return True
+            return True, "Volume decreased"
         except Exception as e:
             print(f"Error (hotkey) volume down: {e}")
-            self.speech.speak("Error decreasing volume")
-            return False
+            return False, "Error decreasing volume"
 
-    def mute_toggle(self) -> bool:
+    def mute_toggle(self) -> Tuple[bool, str]:
         if self.volume_interface:
             try:
                 pythoncom.CoInitialize()
@@ -514,8 +346,7 @@ class OSManagement:
                 self.volume_interface.SetMute(not is_muted, None)
                 status = "muted" if not is_muted else "unmuted"
                 print(f"Volume {status}")
-                self.speech.speak(f"Volume {status}")
-                return True
+                return True, f"Volume {status}"
             except Exception as e:
                 print(f"Error (pycaw) mute toggle: {e}. Fallback.")
             finally:
@@ -523,14 +354,12 @@ class OSManagement:
         try:
             pyautogui.press('volumemute')
             print("Volume mute toggled (hotkey)")
-            self.speech.speak("Volume mute toggled")
-            return True
+            return True, "Volume mute toggled"
         except Exception as e:
             print(f"Error (hotkey) mute toggle: {e}")
-            self.speech.speak("Error toggling mute")
-            return False
+            return False, "Error toggling mute"
 
-    def maximize_volume(self) -> bool:
+    def maximize_volume(self) -> Tuple[bool, str]:
         if self.volume_interface:
             try:
                 pythoncom.CoInitialize()
@@ -538,8 +367,7 @@ class OSManagement:
                 if self.volume_interface.GetMute():
                     self.volume_interface.SetMute(False, None)
                 print("Volume set to maximum (100%)")
-                self.speech.speak("Volume maximized")
-                return True
+                return True, "Volume maximized"
             except Exception as e:
                 print(f"Error (pycaw) maximizing volume: {e}. Fallback.")
             finally:
@@ -560,24 +388,20 @@ class OSManagement:
                 pyautogui.press('volumeup')
                 time.sleep(0.02)
             print("Volume maximized (hotkey)")
-            self.speech.speak("Volume maximized")
-            return True
+            return True, "Volume maximized"
         except Exception as e:
             print(f"Error (hotkey) maximizing volume: {e}")
-            self.speech.speak("Error maximizing volume")
-            return False
+            return False, "Error maximizing volume"
 
-    def set_volume(self, level_input) -> bool:
+    def set_volume(self, level_input) -> Tuple[bool, str]:
         try:
             level = int(level_input)
             if not 0 <= level <= 100:
-                self.speech.speak("Volume level must be between 0 and 100.")
                 print(f"Volume level out of range: {level}")
-                return False
+                return False, "Volume level must be between 0 and 100."
         except (ValueError, TypeError):
-            self.speech.speak("Invalid volume level. Please say a number.")
             print(f"Invalid volume level input: {level_input}")
-            return False
+            return False, "Invalid volume level. Please say a number."
 
         if self.volume_interface:
             try:
@@ -589,8 +413,7 @@ class OSManagement:
                 elif level == 0:
                     self.volume_interface.SetMute(True, None)
                 print(f"Volume set to {level}%")
-                self.speech.speak(f"Volume set to {level} percent")
-                return True
+                return True, f"Volume set to {level} percent"
             except Exception as e:
                 print(f"Error (pycaw) setting volume: {e}. Fallback.")
             finally:
@@ -619,12 +442,10 @@ class OSManagement:
             elif level == 0:
                 pyautogui.press('volumemute')
             print(f"Volume set to approximately {level}% (hotkey)")
-            self.speech.speak(f"Volume set to {level} percent")
-            return True
+            return True, f"Volume set to {level} percent"
         except Exception as e:
             print(f"Error (hotkey) setting volume: {e}")
-            self.speech.speak("Error setting volume")
-            return False
+            return False, "Error setting volume"
 
     def _set_brightness_wmi(self, level_percent: int) -> bool:
         if not self.brightness_interface:
@@ -652,77 +473,61 @@ class OSManagement:
             print(f"Error getting brightness with WMI: {e}")
             return None
 
-    def brightness_up(self) -> bool:
+    def brightness_up(self) -> Tuple[bool, str]:
         current_brightness = self._get_brightness_wmi()
         if current_brightness is not None:
             new_brightness = min(100, current_brightness + 10)
             if self._set_brightness_wmi(new_brightness):
                 print(f"Brightness increased to {new_brightness}%")
-                return True
-        self.speech.speak("Brightness up command sent. Result system dependent.")
+                return True, "Brightness increased"
         print("Attempting brightness up via hotkey (system dependent).")
-        return False
+        return False, "Brightness up command sent. Result system dependent."
 
-    def brightness_down(self) -> bool:
+    def brightness_down(self) -> Tuple[bool, str]:
         current_brightness = self._get_brightness_wmi()
         if current_brightness is not None:
             new_brightness = max(0, current_brightness - 10)
             if self._set_brightness_wmi(new_brightness):
                 print(f"Brightness decreased to {new_brightness}%")
-                return True
-        self.speech.speak("Brightness down command sent. Result system dependent.")
+                return True, "Brightness decreased"
         print("Attempting brightness down via hotkey (system dependent).")
-        return False
+        return False, "Brightness down command sent. Result system dependent."
 
-    def maximize_brightness(self) -> bool:
+    def maximize_brightness(self) -> Tuple[bool, str]:
         if self._set_brightness_wmi(100):
             print("Brightness maximized to 100%")
-            self.speech.speak("Brightness maximized")
-            return True
-        self.speech.speak("Maximize brightness command sent. Result system dependent.")
+            return True, "Brightness maximized"
         print("Attempting brightness maximization via hotkey (system dependent).")
-        return False
+        return False, "Maximize brightness command sent. Result system dependent."
 
-    def set_brightness(self, level_input) -> bool:
+    def set_brightness(self, level_input) -> Tuple[bool, str]:
         try:
             level = int(level_input)
             if not 0 <= level <= 100:
-                self.speech.speak("Brightness level must be between 0 and 100.")
                 print(f"Brightness level out of range: {level}")
-                return False
+                return False, "Brightness level must be between 0 and 100."
         except (ValueError, TypeError):
-            self.speech.speak("Invalid brightness level. Please say a number.")
             print(f"Invalid brightness level input: {level_input}")
-            return False
+            return False, "Invalid brightness level. Please say a number."
 
         if self._set_brightness_wmi(level):
             print(f"Brightness set to {level}%")
-            self.speech.speak(f"Brightness set to {level} percent")
-            return True
-        self.speech.speak(f"Set brightness to {level} command sent. Result system dependent.")
+            return True, f"Brightness set to {level} percent"
         print(f"Attempting to set brightness to {level}% via hotkey (system dependent).")
-        return False
+        return False, f"Set brightness to {level} command sent. Result system dependent."
 
-    def minimize_all_windows(self) -> bool:
+    def minimize_all_windows(self) -> Tuple[bool, str]:
         try:
             pyautogui.hotkey('win', 'd')
             print("Minimized all windows")
-            self.speech.speak("Desktop shown")
             self._update_window_handles()
-            return True
+            return True, "Desktop shown"
         except Exception as e:
             print(f"Error minimizing all: {e}")
-            self.speech.speak("Error minimizing")
-            return False
+            return False, "Error minimizing"
 
-    def restore_all_windows(self) -> bool:
-        """Restore all minimized application windows.
-
-        Strategy:
-        - Enumerate top-level app windows (including minimized)
-        - For each that is minimized (IsIconic), call ShowWindow(SW_RESTORE)
-        - Fallback to Win+Shift+M if none restored or enumeration fails
-        """
+    def restore_all_windows(self) -> Tuple[bool, str]:
+        """Restore all minimized application windows."""
         try:
             restored_count = 0
             excluded_classes = [
@@ -761,38 +566,34 @@ class OSManagement:
                         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
                         restored_count += 1
                 except Exception:
-                    # Ignore per-window errors
                     pass
 
             win32gui.EnumWindows(enum_cb, None)
 
             if restored_count > 0:
                 print(f"Restored {restored_count} minimized window(s)")
-                self.speech.speak(f"Restored {restored_count} windows")
+                self._update_window_handles()
+                return True, f"Restored {restored_count} windows"
             else:
                 # Fallback: Win+Shift+M restores minimized windows on many systems
                 try:
                     pyautogui.hotkey('win', 'shift', 'm')
                     print("Sent Win+Shift+M to restore minimized windows")
-                    self.speech.speak("Windows restored")
+                    self._update_window_handles()
+                    return True, "Windows restored"
                 except Exception as hotkey_err:
                     print(f"Fallback restore hotkey failed: {hotkey_err}")
-                    self.speech.speak("No minimized windows found")
-
-            self._update_window_handles()
-            return True
+                    return False, "No minimized windows found"
         except Exception as e:
             print(f"Error restoring all: {e}")
-            self.speech.speak("Error restoring")
-            return False
+            return False, "Error restoring"
 
-    def maximize_current_window(self) -> bool:
+    def maximize_current_window(self) -> Tuple[bool, str]:
         """Adaptive Maximize: browser → toggle F11; editors/docs → maximize + zoom; others → toggle maximize."""
         try:
             hwnd = win32gui.GetForegroundWindow()
             if not hwnd:
-                self.speech.speak("No active window to maximize")
-                return False
+                return False, "No active window to maximize"
 
             title = (win32gui.GetWindowText(hwnd) or "").lower()
             class_name = (win32gui.GetClassName(hwnd) or "").lower()
@@ -813,8 +614,7 @@ class OSManagement:
             if is_browser():
                 pyautogui.press('f11')
                 print("Toggled browser full screen (F11)")
-                self.speech.speak("Toggled full screen")
-                return True
+                return True, "Toggled full screen"
 
             # Helper to toggle maximize
             def _is_window_maximized(target_hwnd) -> bool:
@@ -853,8 +653,7 @@ class OSManagement:
                         pyautogui.hotkey('ctrl', '+')
                     except Exception:
                         pass
-                    self.speech.speak("Maximized and zoomed in")
-                    return True
+                    return True, "Maximized and zoomed in"
                 elif state == "restored":
                     try:
                         pyautogui.hotkey('ctrl', '-')
@@ -862,76 +661,62 @@ class OSManagement:
                         pyautogui.hotkey('ctrl', '-')
                     except Exception:
                         pass
-                    self.speech.speak("Restored and zoomed out")
-                    return True
+                    return True, "Restored and zoomed out"
                 else:
-                    self.speech.speak("Could not change window state")
-                    return False
+                    return False, "Could not change window state"
 
             # Case 3: Default → toggle maximize
             state = toggle_maximize()
             if state == "maximized":
-                self.speech.speak("Window maximized")
-                return True
+                return True, "Window maximized"
             elif state == "restored":
-                self.speech.speak("Window restored")
-                return True
+                return True, "Window restored"
             else:
-                self.speech.speak("Error maximizing")
-                return False
+                return False, "Error maximizing"
         except Exception as e:
             print(f"Error maximizing: {e}")
-            self.speech.speak("Error maximizing")
-            return False
+            return False, "Error maximizing"
 
-    def minimize_current_window(self) -> bool:
+    def minimize_current_window(self) -> Tuple[bool, str]:
         try:
             pyautogui.hotkey('win', 'down')
             print("Minimized current")
-            self.speech.speak("Window minimized")
             self._update_window_handles()
-            return True
+            return True, "Window minimized"
         except Exception as e:
             print(f"Error minimizing current: {e}")
-            self.speech.speak("Error minimizing")
-            return False
+            return False, "Error minimizing"
 
-    def close_current_window(self) -> bool:
+    def close_current_window(self) -> Tuple[bool, str]:
         try:
             pyautogui.hotkey('alt', 'f4')
             print("Closed current window")
-            self.speech.speak("Window closed")
             time.sleep(0.5)
             self._update_window_handles()
-            return True
+            return True, "Window closed"
         except Exception as e:
             print(f"Error closing window: {e}")
-            self.speech.speak("Error closing window")
-            return False
+            return False, "Error closing window"
 
-    def move_window_left(self) -> bool:
+    def move_window_left(self) -> Tuple[bool, str]:
         try:
             pyautogui.hotkey('win', 'left')
             print("Moved window left")
-            self.speech.speak("Window moved left")
-            return True
+            return True, "Window moved left"
         except Exception as e:
             print(f"Error moving left: {e}")
-            self.speech.speak("Error moving left")
-            return False
+            return False, "Error moving left"
 
-    def move_window_right(self) -> bool:
+    def move_window_right(self) -> Tuple[bool, str]:
         try:
             pyautogui.hotkey('win', 'right')
             print("Moved window right")
-            self.speech.speak("Window moved right")
-            return True
+            return True, "Window moved right"
         except Exception as e:
             print(f"Error moving right: {e}")
-            self.speech.speak("Error moving right")
-            return False
+            return False, "Error moving right"
 
-    def take_screenshot(self) -> bool:
+    def take_screenshot(self) -> Tuple[bool, str]:
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
             desktop_path = os.path.join(os.environ.get('USERPROFILE', os.path.expanduser("~")), 'Desktop')
@@ -945,30 +730,25 @@ class OSManagement:
             screenshot_path = os.path.join(desktop_path, screenshot_file)
             pyautogui.screenshot(screenshot_path)
             print(f"Screenshot saved to {screenshot_path}")
-            self.speech.speak("Screenshot saved")
-            return True
+            return True, "Screenshot saved"
         except Exception as e:
             print(f"Error taking screenshot: {e}")
-            self.speech.speak("Error taking screenshot")
-            return False
+            return False, "Error taking screenshot"
 
-    def run_application(self, app_name_input: str) -> bool:
+    def run_application(self, app_name_input: str) -> Tuple[bool, str]:
         if not app_name_input or not isinstance(app_name_input, str):
-            self.speech.speak("Please provide an application name.")
             print("No valid application name provided.")
-            return False
+            return False, "Please provide an application name."
 
         app_name = app_name_input.strip().lower()
         if app_name.startswith("run "):
             app_name = app_name.split("run ", 1)[1].strip()
         elif app_name == "run":
-            self.speech.speak("Which application to run?")
             print("No application name after 'run'.")
-            return False
+            return False, "Which application to run?"
         if not app_name:
-            self.speech.speak("No application name specified.")
             print("Application name is empty.")
-            return False
+            return False, "No application name specified."
 
         try:
             pyautogui.press('win')
@@ -976,12 +756,64 @@ class OSManagement:
             pyautogui.write(app_name, interval=0.07)
             time.sleep(1.0)
             pyautogui.press('enter')
-            self.speech.speak(f"Opening {app_name}")
             print(f"Attempted to launch: {app_name}")
             time.sleep(2.5)
             self._update_window_handles()
-            return True
+            return True, f"Opening {app_name}"
         except Exception as e:
             print(f"Error launching '{app_name}': {e}")
-            self.speech.speak(f"Error opening {app_name}")
-            return False
+            return False, f"Error opening {app_name}"
+
+    def next_wallpaper(self) -> Tuple[bool, str]:
+        """Change wallpaper: go to desktop, right click, 3 down, enter."""
+        try:
+            import pyautogui
+            import win32gui
+            
+            # Disable fail-safe for this operation
+            original_failsafe = pyautogui.FAILSAFE
+            pyautogui.FAILSAFE = False
+            
+            try:
+                # Check if already on desktop
+                try:
+                    hwnd = win32gui.GetForegroundWindow()
+                    class_name = win32gui.GetClassName(hwnd)
+                    is_on_desktop = class_name in ("Progman", "WorkerW")
+                except:
+                    is_on_desktop = False
+                
+                # Go to desktop if not already there
+                if not is_on_desktop:
+                    pyautogui.hotkey('win', 'd')
+                    time.sleep(0.6)
+                
+                # Move to safe center position (away from corners)
+                screen_width, screen_height = pyautogui.size()
+                safe_x = screen_width // 2
+                safe_y = screen_height // 2
+                pyautogui.moveTo(safe_x, safe_y, duration=0.3)
+                time.sleep(0.2)
+                
+                # Right click
+                pyautogui.rightClick()
+                time.sleep(0.5)
+                
+                # 3 down presses
+                for _ in range(3):
+                    pyautogui.press('down')
+                    time.sleep(0.1)
+                
+                # Enter
+                pyautogui.press('enter')
+                
+                print("Wallpaper changed (3 down presses)")
+                return True, "Wallpaper changed"
+                
+            finally:
+                # Restore original fail-safe setting
+                pyautogui.FAILSAFE = original_failsafe
+            
+        except Exception as e:
+            print(f"Error changing wallpaper: {e}")
+            return False, "Failed to change wallpaper"

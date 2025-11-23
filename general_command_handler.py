@@ -169,10 +169,6 @@ class GeneralCommandHandler:
     def handle_exit(self, cmd_text=None):
         """Handle the 'exit' command: speak and terminate."""
         print("Exiting the program...")
-        if self.speech:
-            self.speech.speak("Exiting the program.")
-        elif hasattr(self.file_manager, "speech") and self.file_manager.speech:
-            self.file_manager.speech.speak("Exiting the program.")
         sys.exit(0)
 
     def handle_tell_weather(self, cmd_text):
@@ -444,6 +440,7 @@ class GeneralCommandHandler:
                 else:
                     # If Word is open, make sure it's focused
                     word_windows[0].activate()
+                    time.sleep(0.5)
             except (ImportError, Exception) as e:
                 print(f"Could not check for or open Word due to an error: {e}")
 
@@ -466,16 +463,65 @@ class GeneralCommandHandler:
         # ----------------------------------------------------
 
         if not essay_text or "I'm sorry" in essay_text or "I couldn't" in essay_text:
-             self.speech.speak("I'm sorry, I couldn't generate an essay on that topic.")
-             return None
+             return "I'm sorry, I couldn't generate an essay on that topic."
         
         # --- NEW: Conditional output ---
         if write_on_word:
             # Type the essay into the active window (Word)
-            self.speech.speak("Here is the essay.")
+            # Type the essay into the active window (Word)
             time.sleep(1) # Give user time to focus the desired window
-            pyautogui.write(essay_text, interval=0.02)
-            return None # No verbal response needed after typing
+            
+            try:
+                # --- PREVENT FAIL-SAFE: Move mouse to safe center position ---
+                # Get screen size and move mouse to center to avoid corners
+                import pyautogui
+                screen_width, screen_height = pyautogui.size()
+                safe_x = screen_width // 2
+                safe_y = screen_height // 2
+                pyautogui.moveTo(safe_x, safe_y, duration=0.3)
+                time.sleep(0.2)
+                # --------------------------------------------------------------
+                
+                # Type the essay content
+                pyautogui.write(essay_text, interval=0.02)
+                
+                # --- NEW: Automatically save the essay to desktop ---
+                # --- NEW: Automatically save the essay to desktop ---
+                time.sleep(1)
+                
+                # Create a safe filename
+                safe_topic = "".join([c for c in topic if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+                safe_topic = safe_topic.replace(' ', '_')
+                filename = f"{safe_topic}_essay.docx"
+                
+                desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+                full_path = os.path.join(desktop_path, filename)
+                
+                # Move mouse to center again before save dialog operations
+                pyautogui.moveTo(safe_x, safe_y, duration=0.2)
+                
+                # Save the file using Ctrl+S
+                pyautogui.hotkey('ctrl', 's')
+                time.sleep(1.5) # Wait for save dialog
+                
+                # Type the full path
+                pyautogui.write(full_path, interval=0.03)
+                time.sleep(0.5)
+                pyautogui.press('enter')
+                time.sleep(1)
+                
+                # Show the desktop to reveal the saved file
+                if hasattr(self.command_handler, 'os_handler'):
+                    self.command_handler.os_handler.handle_go_to_desktop()
+                
+                return f"Essay written and saved as {filename} on your desktop."
+                
+            except pyautogui.FailSafeException:
+                print("PyAutoGUI fail-safe triggered! Mouse moved to screen corner.")
+                return "Essay typed but save interrupted. Please save manually using Ctrl+S."
+            except Exception as e:
+                print(f"Error during essay typing or saving: {e}")
+                return "Essay typed but could not be saved automatically. Please save manually."
         else:
             # Print to terminal and speak the result
             print(f"\n--- Essay on {topic} ---\n{essay_text}\n---------------------\n")
@@ -484,10 +530,9 @@ class GeneralCommandHandler:
     def handle_send_to_chatgpt(self, query):
         """Opens ChatGPT, focuses the window, and types the query."""
         if not query:
-            self.speech.speak("Please tell me what to send to ChatGPT.")
-            return None
+            return "Please tell me what to send to ChatGPT."
 
-        self.speech.speak(f"Sending to ChatGPT: {query}")
+
 
         try:
             import pygetwindow as gw
@@ -523,17 +568,18 @@ class GeneralCommandHandler:
                 pyautogui.write(query, interval=0.03)
                 pyautogui.press('enter')
                 logging.info("Query sent to ChatGPT.")
+                return f"Sent to ChatGPT: {query}"
             else:
                 logging.error("Failed to find ChatGPT window even after attempting to open it.")
-                self.speech.speak("I couldn't find or open the ChatGPT window.")
+                return "I couldn't find or open the ChatGPT window."
 
         except ImportError:
             logging.error("A required library (pygetwindow or webbrowser) is not installed.")
-            self.speech.speak("A required library for browser interaction is missing.")
+            return "A required library for browser interaction is missing."
         except Exception as e:
             # This will now catch any other unexpected error during the process.
             logging.error(f"An unexpected error occurred in handle_send_to_chatgpt: {e}", exc_info=True)
-            self.speech.speak("I had trouble sending your message to ChatGPT.")
+            return "I had trouble sending your message to ChatGPT."
 
     def handle_noop(self, _=None):
         """A handler that does nothing, for commands handled by the main loop."""
@@ -617,9 +663,9 @@ class GeneralCommandHandler:
 
             # Check if the initial text is long
             if llm_handler.count_tokens(current_text) > safe_token_limit:
-                self.speech.speak("The text is long. I will summarize it in parts. This may take a moment.")
+                print("The text is long. I will summarize it in parts. This may take a moment.")
             else:
-                self.speech.speak("Summarizing the text from your clipboard. Please wait.")
+                print("Summarizing the text from your clipboard. Please wait.")
 
             # --- RECURSIVE REDUCTION LOOP ---
             # Keep summarizing until the text is short enough for a final pass.

@@ -62,7 +62,47 @@ class CommandHandler:
             "handler_module": "file",
             "params": None
         },
+        "open this pc": {
+            "handler": "handle_open_my_computer",
+            "handler_module": "file",
+            "params": None
+        },
+        "open my pc": {
+            "handler": "handle_open_my_computer",
+            "handler_module": "file",
+            "params": None
+        },
+        "go to my computer": {
+            "handler": "handle_open_my_computer",
+            "handler_module": "file",
+            "params": None
+        },
+        "go to this pc": {
+            "handler": "handle_open_my_computer",
+            "handler_module": "file",
+            "params": None
+        },
         "open disk": {
+            "handler": "handle_open_disk",
+            "handler_module": "file",
+            "params": "disk_letter"
+        },
+        "open drive": {
+            "handler": "handle_open_disk",
+            "handler_module": "file",
+            "params": "disk_letter"
+        },
+        "go to disk": {
+            "handler": "handle_open_disk",
+            "handler_module": "file",
+            "params": "disk_letter"
+        },
+        "go to drive": {
+            "handler": "handle_open_disk",
+            "handler_module": "file",
+            "params": "disk_letter"
+        },
+        "access drive": {
             "handler": "handle_open_disk",
             "handler_module": "file",
             "params": "disk_letter"
@@ -80,16 +120,6 @@ class CommandHandler:
         "exit": {
             "handler": "handle_exit",
             "handler_module": "general",
-            "params": None
-        },
-        "increase volume": {
-            "handler": "handle_volume_up",
-            "handler_module": "os",
-            "params": None
-        },
-        "decrease volume": {
-            "handler": "handle_volume_down",
-            "handler_module": "os",
             "params": None
         },
         "mute volume": {
@@ -112,16 +142,6 @@ class CommandHandler:
             "handler_module": "os",
             "params": "number"
         },
-        "increase brightness": {
-            "handler": "handle_brightness_up",
-            "handler_module": "os",
-            "params": None
-        },
-        "decrease brightness": {
-            "handler": "handle_brightness_down",
-            "handler_module": "os",
-            "params": None
-        },
         "maximize brightness": {
             "handler": "handle_maximize_brightness",
             "handler_module": "os",
@@ -132,6 +152,7 @@ class CommandHandler:
             "handler_module": "os",
             "params": "number"
         },
+
         "switch tab": {
             "handler": "handle_switch_tab",
             "handler_module": "os",
@@ -147,56 +168,20 @@ class CommandHandler:
             "handler_module": "os",
             "params": None
         },
-        "restore windows": {
-            "handler": "handle_restore_all_windows",
-            "handler_module": "os",
-            "params": None
-        },
-        "show grid": {
-            "handler": "handle_show_grid",
-            "handler_module": "os",
-            "params": None
-        },
-        "hide grid": {
-            "handler": "handle_hide_grid",
-            "handler_module": "os",
-            "params": None
-        },
-        "click cell": {
-            "handler": "handle_click_cell",
-            "handler_module": "os",
-            "params": "number"
-        },
-        "double click cell": {
-            "handler": "handle_double_click_cell",
-            "handler_module": "os",
-            "params": "number"
-        },
-        "right click cell": {
-            "handler": "handle_right_click_cell",
-            "handler_module": "os",
-            "params": "number"
-        },
-        "drag from": {
-            "handler": "handle_drag_from",
-            "handler_module": "os",
-            "params": "number"
-        },
-        "drop on": {
-            "handler": "handle_drop_on",
-            "handler_module": "os",
-            "params": "number"
-        },
-        "zoom cell": {
-            "handler": "handle_zoom_cell",
-            "handler_module": "os",
-            "params": "number"
-        },
-        "exit zoom": {
-            "handler": "handle_exit_zoom",
-            "handler_module": "os",
-            "params": None
-        },
+        "show desktop": {"handler": "handle_go_to_desktop", "handler_module": "os", "params": None},
+        "change wallpaper": {"handler": "handle_change_wallpaper", "handler_module": "os", "params": None},
+        "next wallpaper": {"handler": "handle_change_wallpaper", "handler_module": "os", "params": None},
+        "set wallpaper to": {"handler": "handle_set_wallpaper", "handler_module": "general", "params": "image_file"},
+        "show grid": {"handler": "handle_show_grid", "handler_module": "os", "params": None},
+        "hide grid": {"handler": "handle_hide_grid", "handler_module": "os", "params": None},
+        "click cell": {"handler": "handle_click_cell", "handler_module": "os", "params": "number"},
+        "double click cell": {"handler": "handle_double_click_cell", "handler_module": "os", "params": "number"},
+        "right click cell": {"handler": "handle_right_click_cell", "handler_module": "os", "params": "number"},
+        "drag from": {"handler": "handle_drag_from", "handler_module": "os", "params": "number"},
+        "drop on": {"handler": "handle_drop_on", "handler_module": "os", "params": "number"},
+        "zoom cell": {"handler": "handle_zoom_cell", "handler_module": "os", "params": "number"},
+        "exit zoom": {"handler": "handle_exit_zoom", "handler_module": "os", "params": None},
+        "set grid size": {"handler": "handle_set_grid_size", "handler_module": "os", "params": "number"},
         "maximize window": {
             "handler": "handle_maximize_current_window",
             "handler_module": "os",
@@ -302,18 +287,8 @@ class CommandHandler:
             "handler_module": "general",
             "params": None
         },
-        "set wallpaper to": {
-            "handler": "handle_set_wallpaper",
-            "handler_module": "general",
-            "params": "image_file"
-        },
         "go to desktop": {
             "handler": "handle_go_to_desktop",
-            "handler_module": "os",
-            "params": None
-        },
-        "change wallpaper": {
-            "handler": "handle_change_wallpaper",
             "handler_module": "os",
             "params": None
         },
@@ -367,11 +342,6 @@ class CommandHandler:
             "handler_module": "os",
             "params": None
         },  
-        "set grid size": {
-            "handler": "handle_set_grid_size",
-            "handler_module": "os",
-            "params": "number"
-        },
         "bookmark tab": {
             "handler": "handle_bookmark_tab",
             "handler_module": "os",
@@ -381,11 +351,6 @@ class CommandHandler:
             "handler": "handle_open_incognito",
             "handler_module": "os",
             "params": None
-        },
-        "switch tab": {
-            "handler": "handle_switch_tab",     
-            "handler_module": "os",
-            "params": "number"
         },
         "search": {
             "handler": "handle_search",
@@ -548,6 +513,11 @@ class CommandHandler:
             "handler_module": "general",
             "params": None
         },
+        "open file": {
+            "handler": "handle_open_file",
+            "handler_module": "file",
+            "params": "file_name"
+        },
     }
 
     # Synonyms for natural language commands
@@ -567,21 +537,19 @@ class CommandHandler:
             "quit", "stop program", "bye", "good bye", "goodbye",
             "shut down", "terminate", "kill program", "shutdown assistant"
         ],
-        "increase volume": ["volume up", "turn volume up", "louder"],
-        "decrease volume": ["volume down", "turn volume down", "quieter"],
         "mute volume": ["mute", "silence"],
         "unmute volume": ["unmute"],
         "maximize volume": ["max volume", "full volume"],
         "set volume": ["set volume to", "turn volume to", "adjust volume to"],
-        "increase brightness": ["brightness up", "turn brightness up", "brighter"],
-        "decrease brightness": ["brightness down", "turn brightness down", "dimmer"],
         "maximize brightness": ["max brightness", "full brightness"],
         "set brightness": ["set brightness to", "turn brightness to", "adjust brightness to"],
+
         "switch tab": ["next tab", "change tab", "switch tab", "switch to next tab"],
         "switch window": ["next window", "change window", "switch"],
-        "minimize all windows": ["show desktop", "minimize all"],
+        "minimize all windows": ["minimize all"],
         "restore windows": ["restore all windows", "bring back windows"],
         "show grid": ["show grade", "display grid", "open grid", "grid on", "show mouse grid"],
+        "show desktop": ["show desktop", "go to desktop", "display desktop"],
         "hide grid": ["close grid", "grid off", "remove grid"],
         "click cell": ["click", "left click"],
         "double click cell": ["double click", "double-click"],
@@ -1031,7 +999,6 @@ class CommandHandler:
             "write essay": ["write an essay on", "write about", "compose an essay on", "write a"],
             "search": ["search for", "google", "look up", "find"],
             "play on youtube": ["play on youtube", "youtube", "play video", "play song", "play music on youtube"],
-            "open": ["open", "launch", "start", "go to"],
         }
 
         # Only check for prefixes if a more specific suffix command wasn't already found
@@ -1066,12 +1033,12 @@ class CommandHandler:
         if not cmd_name:
             for cmd, info in self.COMMANDS.items():
                 handler_name = info["handler"]
-                if fuzz.ratio(cmd, cmd_text) > 80:
+                if fuzz.ratio(cmd, cmd_text) > 75:
                     print(f"Executing fuzzy-matched command: {cmd} (input: {cmd_text})")
                     cmd_name = cmd
                     break
                 for synonym in self.COMMAND_SYNONYMS.get(cmd, []):
-                    if fuzz.ratio(synonym, cmd_text) > 80:
+                    if fuzz.ratio(synonym, cmd_text) > 75:
                         print(f"Executing fuzzy-matched command: {cmd} (matched: {synonym}, input: {cmd_text})")
                         cmd_name = cmd
                         break
@@ -1164,17 +1131,25 @@ class CommandHandler:
             print("No folder_name extracted")
             return None
         elif param_type == "old_name_new_name":
-            # Capture old and new names, including spaces, until 'to' and end
-            match = re.search(r'rename\s+folder\s+(.+?)\s+to\s+(.+)$', cmd_text, re.IGNORECASE)
-            if match:
-                param = (match.group(1).strip(), match.group(2).strip())
-                print(f"Extracted old_name_new_name: {param}")
-                return param
+            # Capture old and new names, including spaces, until 'to'/'from' and end
+            # Support both "rename folder X to Y" and "change folder name X to Y"
+            # Also support "from" as a common transcription error for "to"
+            patterns = [
+                r'rename\s+folder\s+(.+?)\s+(?:to|from)\s+(.+)$',
+                r'change\s+folder\s+name\s+(.+?)\s+(?:to|from)\s+(.+)$'
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, cmd_text, re.IGNORECASE)
+                if match:
+                    param = (match.group(1).strip(), match.group(2).strip())
+                    print(f"Extracted old_name_new_name: {param}")
+                    return param
             print("No old_name_new_name extracted")
             return (None, None)
         elif param_type == "disk_letter":
             # Capture disk letter from phrases like 'open/go to/access disk|disc|drive C:' or 'open C drive'
-            match = re.search(r'(?:open|access|go to)\s+(?:disk|disc|drive)\s+([a-zA-Z]):?(?:\s|$)', cmd_text, re.IGNORECASE)
+            # Added support for "local disk"
+            match = re.search(r'(?:open|access|go to)\s+(?:local\s+)?(?:disk|disc|drive)\s+([a-zA-Z]):?(?:\s|$)', cmd_text, re.IGNORECASE)
             if match:
                 param = match.group(1).strip().upper()
                 print(f"Extracted disk_letter: {param}")
@@ -1509,21 +1484,42 @@ class CommandHandler:
                 result = handler_func(self.context)  # For commands like open_my_computer, go_back
         elif handler_module == "os":
             handler_func = getattr(self.os_handler, handler_name)
-            result = handler_func(params if info["params"] else None)
+            
+            # OS commands that need cmd_text (they do their own pattern matching)
+            os_text_based_commands = [
+                "set volume", "set brightness", "click cell", "double click cell",
+                "right click cell", "drag from", "drop on", "zoom cell", "set grid size"
+            ]
+            
+            # For text-based OS commands, pass cmd_text
+            if cmd_name in os_text_based_commands:
+                result = handler_func(cmd_text)
+            # For other OS commands, pass params
+            else:
+               result = handler_func(params if info["params"] else None)
         elif handler_module == "general":
             handler_func = getattr(self.general_handler, handler_name)
+            
+            # Commands that need cmd_text (they do their own pattern matching)
+            text_based_commands = [
+                "countdown", "spell", "tell_weather", "check bmi",
+                "add numbers", "subtract numbers", "multiply numbers", "divide numbers"
+            ]
+            
             # For email commands, pass the cmd_text so the handler can extract params
             if "email" in cmd_name:
                 result = handler_func(cmd_text)
+            # For text-based commands, pass cmd_text
+            elif cmd_name in text_based_commands:
+                result = handler_func(cmd_text)
+            # For write essay, pass both params and cmd_text
+            elif cmd_name == "write essay":
+                result = handler_func(params, cmd_text)
+            # For other commands, pass params
             else:
-                # Pass both params and the full text to handlers that might need context
-                if cmd_name == "write essay":
-                    result = handler_func(params, cmd_text)
-                else:
-                    result = handler_func(params if info["params"] else None)
+                result = handler_func(params if info["params"] else None)
         
         # Return the handler result (could be string, boolean, or None)
-        # If result is None or True, return a generic success message
         if result is not None and isinstance(result, str):
             return result
         elif result:

@@ -7,6 +7,7 @@ import json
 import socket
 import re
 import logging
+import os
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
@@ -14,32 +15,81 @@ from dataclasses import dataclass
 import speech_recognition as sr
 import numpy as np
 import sounddevice as sd
+import torch  # For prompt biasing tensor operations
 
 
 # Project-specific imports
 # No longer need FileManager for offline commands
 
-# Attempt to import Faster Whisper for offline support
+# Attempt to import OpenVINO Whisper for offline support
 try:
-    from faster_whisper import WhisperModel
-    OFFLINE_AVAILABLE = True
+    from optimum.intel.openvino import OVModelForSpeechSeq2Seq
+    from transformers import AutoProcessor, pipeline
+    OPENVINO_AVAILABLE = True
 except ImportError:
-    OFFLINE_AVAILABLE = False
-    logging.warning("Faster Whisper not installed. Offline mode will not be available.")
+    OPENVINO_AVAILABLE = False
+    logging.warning("Optimum-Intel not installed. OpenVINO-based offline mode will not be available.")
+
+# Unified flag: offline engine availability
+OFFLINE_AVAILABLE = OPENVINO_AVAILABLE
+
+# Special marker used to signal that online STT should fail over to offline
+SWITCH_TO_OFFLINE_SIGNAL = "__STT_SWITCH_OFFLINE__"
 
 # --- Configuration ---
 ASSEMBLYAI_KEY = "d5a709c0d7c74944b75b91904b86405a"  # Your AssemblyAI API Key
 
-# --- Offline Engine Configuration (from user's script) ---
+# --- OpenVINO Engine Configuration ---
 @dataclass
-class OfflineConfig:
-    """Configuration for the JARVIS STT Engine"""
-    model_name: str = "base.en"
+class OpenVINOConfig:
+    """Configuration for the OpenVINO Whisper STT Engine"""
+    model_path: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "distil_small_openvino")
     sample_rate: int = 16000
-    chunk_duration_seconds: float = 3.0
-    silence_threshold: float = 0.02  # Energy threshold for simple VAD
-    cpu_threads: int = 4
-    compute_type: str = "int8"
+    # Slightly longer chunks to capture phrases like "set volume 50" without cutting off the number
+    chunk_duration_seconds: float = 1.5
+    # Lowered slightly to catch quieter speech
+    silence_threshold: float = 0.015  # Energy threshold for simple VAD
+    # VAD parameters
+    vad_onset: float = 0.5
+    vad_offset: float = 0.35
+
+# --- Offline Vocabulary for Vosk (strict command bias) ---
+OFFLINE_COMMAND_PHRASES: List[str] = [
+    "create folder", "open folder", "delete folder", "rename folder",
+    "open my computer", "open this pc", "go back", "open disk", "access drive",
+    "show desktop", "minimize all windows", "restore windows",
+    "switch window", "maximize window", "minimize window", "close window",
+    "move window left", "move window right", "snap window", "go to desktop",
+    "new tab", "close tab", "switch tab", "next tab", "previous tab",
+    "refresh page", "reload", "zoom in", "zoom out", "search google",
+    "open youtube", "play video", "pause video", "search for",
+    "increase volume", "decrease volume", "set volume", "mute volume", "unmute",
+    "maximize volume", "increase brightness", "decrease brightness", "set brightness",
+    "take screenshot", "take photo", "open camera",
+    "tell time", "tell date", "tell day", "tell weather", "tell joke",
+    "countdown", "set timer",
+    "open calculator", "open notepad", "open word", "run application",
+    "read clipboard", "summarize clipboard", "copy", "paste", "select all", "undo", "redo",
+    "show grid", "hide grid", "click cell", "double click cell", "right click cell",
+    "drag from", "drop on", "zoom cell", "exit zoom", "set grid size",
+    "stop listening", "start listening", "exit system", "shutdown", "restart",
+    "hello", "hey assistant", "wake up", "sleep", "cancel", "stop",
+    "start dictation", "stop dictation", "take a note", "start dictation mode", "stop dictation mode",
+    # LLM-style triggers to bias Vosk towards conversational queries when offline
+    "can you tell me", "tell me about", "can you explain", "explain",
+    "what is", "who is", "why is", "how to", "how do",
+    "write a", "write an", "translate", "summarize", "let's talk", "assistant",
+]
+
+OFFLINE_NUMBER_WORDS: List[str] = [
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
+    "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred",
+    "0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100",
+]
+
+# Default Vosk model location inside the project (user-specific absolute path avoided)
+VOSK_MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "vosk-model-en-in-0.5")
 
 # --- Dynamic Command Parser (from user's script) ---
 class CommandParser:
@@ -201,67 +251,105 @@ class CommandParser:
             "scroll", "up", "down", "left", "right",
             "screenshot", "photo", "picture", "desktop", "wallpaper",
             "time", "date", "weather", "countdown", "timer",
-            "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"
+            # Expanded numeric vocabulary to improve commands like "set volume 50"
+            "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+            "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred",
+            "0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100",
         ]
         
         prompt_parts = primary_commands + secondary_keywords
-        prompt = "Commands: " + ", ".join(prompt_parts[:50])
+        # Slightly larger prompt window so the extra numeric keywords are included
+        prompt = "Commands: " + ", ".join(prompt_parts[:80])
         return prompt
 
-# --- Offline STT Engine (from user's script) ---
-class OfflineSTT:
-    """Main JARVIS STT Engine (continuous listening)."""
-    def __init__(self, config: Optional[OfflineConfig] = None):
-        if not OFFLINE_AVAILABLE:
-            raise RuntimeError("Cannot initialize OfflineSTT: Faster Whisper is not installed.")
-            
-        self.config = config or OfflineConfig()
-        self.parser = CommandParser() # The new parser is self-contained
+# --- OpenVINO Whisper Offline STT Engine ---
+class OpenVINOWhisperSTT:
+    """Offline STT using OpenVINO-optimized Whisper for fast, hardware-accelerated inference."""
+    
+    def __init__(self, config: Optional[OpenVINOConfig] = None):
+        if not OPENVINO_AVAILABLE:
+            raise RuntimeError("Cannot initialize OpenVINOWhisperSTT: optimum-intel is not installed.")
+        
+        self.config = config or OpenVINOConfig()
+        
+        # Verify model path exists
+        if not os.path.isdir(self.config.model_path):
+            raise RuntimeError(f"OpenVINO model directory not found at '{self.config.model_path}'")
+        
+        self.parser = CommandParser()
         self.audio_queue = queue.Queue()
-        self.transcription_queue = queue.Queue() # For parsed commands
+        self.transcription_queue = queue.Queue()
         self.is_running = False
         self.is_paused = True
         self.model = None
+        self.processor = None
         self.command_prompt = self.parser.generate_command_prompt()
         self._processing_thread: Optional[threading.Thread] = None
         
         self.recent_commands = []
         self.max_recent_commands = 5
-
+        
+        # Mode for switching between command and dictation
+        self.mode = "COMMAND"
+        
+        logging.info(f"OpenVINO Whisper STT initialized with model at: {self.config.model_path}")
+    
     def start(self):
-        logging.info("Starting Offline STT Engine...")
+        logging.info("Starting OpenVINO Whisper STT Engine...")
         self._load_model()
         self.is_running = True
         self.is_paused = False
-
+        
         self._processing_thread = threading.Thread(target=self._process_audio_loop, daemon=True)
         self._processing_thread.start()
-
+        
         threading.Thread(target=self._audio_stream_loop, daemon=True).start()
-
+        logging.info("✅ OpenVINO Whisper STT Engine started successfully")
+    
     def stop(self):
         if self.is_running:
-            logging.info("Stopping Offline STT Engine...")
+            logging.info("Stopping OpenVINO Whisper STT Engine...")
             self.is_running = False
-
+    
     def pause(self):
+        logging.info("OpenVINO Whisper STT pause requested; clearing audio queue.")
         self.is_paused = True
         with self.audio_queue.mutex:
             self.audio_queue.queue.clear()
-
+    
     def resume(self):
+        logging.info("OpenVINO Whisper STT resume requested.")
         self.is_paused = False
-
+    
+    def set_mode(self, mode: str):
+        """Switch between 'COMMAND' and 'DICTATION' modes."""
+        mode_upper = (mode or "").upper()
+        if mode_upper == "DICTATION":
+            if self.mode != "DICTATION":
+                logging.info("OpenVINO Whisper STT switched to DICTATION mode.")
+            self.mode = "DICTATION"
+        else:
+            if self.mode != "COMMAND":
+                logging.info("OpenVINO Whisper STT switched to COMMAND mode.")
+            self.mode = "COMMAND"
+    
     def _load_model(self):
-        logging.info(f"Loading Whisper model: {self.config.model_name}")
-        self.model = WhisperModel(
-            self.config.model_name, 
-            device="cpu",
-            compute_type=self.config.compute_type, 
-            cpu_threads=self.config.cpu_threads
-        )
-        logging.info("Model loaded. Using command prompt for biasing.")
-
+        logging.info(f"Loading OpenVINO Whisper model from: {self.config.model_path}")
+        try:
+            # Load OpenVINO-optimized model
+            self.model = OVModelForSpeechSeq2Seq.from_pretrained(
+                self.config.model_path,
+                compile=True
+            )
+            
+            # Load processor (tokenizer + feature extractor)
+            self.processor = AutoProcessor.from_pretrained(self.config.model_path)
+            
+            logging.info("✅ OpenVINO Whisper model loaded successfully with hardware acceleration")
+        except Exception as e:
+            logging.error(f"Failed to load OpenVINO Whisper model: {e}")
+            raise
+    
     def _audio_stream_loop(self):
         try:
             with sd.InputStream(
@@ -273,96 +361,220 @@ class OfflineSTT:
                 while self.is_running:
                     time.sleep(0.1)
         except Exception as e:
-            logging.error(f"Audio stream failed: {e}. Offline engine will stop.")
+            logging.error(f"Audio stream failed: {e}. OpenVINO engine will stop.")
             self.is_running = False
-
+    
     def _audio_callback(self, indata, frames, time_info, status):
         if status:
             logging.warning(f"Audio callback status: {status}")
         if self.is_running and not self.is_paused:
             self.audio_queue.put(indata[:, 0].copy())
-
+    
     def _get_contextual_prompt(self) -> str:
-        """Generate a context-aware prompt based on recent commands."""
-        base_prompt = self.command_prompt
+        """Generate a context-aware prompt based on recent commands.
+        In offline mode we avoid a static command list to prevent hallucination.
+        """
+        # Only include recent commands if any; otherwise return empty string
         if self.recent_commands:
             recent_str = "Recent: " + ", ".join(self.recent_commands[-3:])
-            return f"{recent_str}. {base_prompt}"
-        return base_prompt
-
+            return recent_str
+        return ""
+    
     def _process_audio_loop(self):
-        audio_buffer = []
+        """Process audio from queue using VAD to detect complete utterances."""
+        logging.info("OpenVINO audio processing loop started.")
+        
+        speech_buffer = []
+        silence_chunks = 0
+        max_silence_chunks = 15  # ~1.5 seconds of silence to end utterance
+        min_speech_chunks = 3    # Minimum chunks before considering it speech
+        
         while self.is_running:
             try:
                 if self.is_paused:
                     time.sleep(0.1)
                     continue
-
-                chunk = self.audio_queue.get(timeout=1.0)
-                audio_buffer.append(chunk)
                 
-                buffer_duration = sum(len(c) for c in audio_buffer) / self.config.sample_rate
-                if buffer_duration < self.config.chunk_duration_seconds:
-                    continue
+                # Get audio chunk from queue
+                audio_chunk = self.audio_queue.get(timeout=0.5)
                 
-                full_audio = np.concatenate(audio_buffer)
-                audio_buffer = []
+                # Calculate energy for VAD
+                audio_energy = np.abs(audio_chunk).mean()
                 
-                audio_energy = np.sqrt(np.mean(full_audio**2))
-                if audio_energy < self.config.silence_threshold:
-                    continue
-                
-                contextual_prompt = self._get_contextual_prompt()
-                
-                segments, info = self.model.transcribe(
-                    full_audio, 
-                    beam_size=3,
-                    best_of=3,
-                    temperature=0.0,
-                    vad_filter=True,
-                    vad_parameters=dict(
-                        threshold=0.5,
-                        min_speech_duration_ms=250,
-                        max_speech_duration_s=10
-                    ),
-                    language="en",
-                    initial_prompt=contextual_prompt,
-                    suppress_blank=True,
-                    suppress_tokens=[-1],
-                    condition_on_previous_text=False
-                )
-                
-                transcribed_text = " ".join(seg.text.strip() for seg in segments)
-                
-                if not transcribed_text or len(transcribed_text) < 2:
-                    continue
-                
-                self._handle_transcription(transcribed_text)
+                # Speech detection
+                if audio_energy > self.config.silence_threshold:
+                    # Speech detected
+                    speech_buffer.append(audio_chunk)
+                    silence_chunks = 0
+                else:
+                    # Silence detected
+                    if len(speech_buffer) > 0:
+                        # We have speech in buffer, this is silence after speech
+                        silence_chunks += 1
+                        speech_buffer.append(audio_chunk)  # Include some silence
+                        
+                        # Check if we have enough silence to consider utterance complete
+                        if silence_chunks >= max_silence_chunks and len(speech_buffer) >= min_speech_chunks:
+                            # Transcribe the complete utterance
+                            full_audio = np.concatenate(speech_buffer)
+                            buffer_duration = len(full_audio) / self.config.sample_rate
+                            
+                            logging.info(
+                                "OpenVINO STT: complete utterance detected duration=%.2fs chunks=%d",
+                                buffer_duration,
+                                len(speech_buffer)
+                            )
+                            
+                            # Process the complete utterance
+                            self._transcribe_audio(full_audio)
+                            
+                            # Reset buffer
+                            speech_buffer = []
+                            silence_chunks = 0
                 
             except queue.Empty:
+                # Check if we have buffered speech that's been waiting too long
+                if len(speech_buffer) >= min_speech_chunks:
+                    silence_chunks += 1
+                    if silence_chunks >= max_silence_chunks:
+                        full_audio = np.concatenate(speech_buffer)
+                        buffer_duration = len(full_audio) / self.config.sample_rate
+                        
+                        logging.info(
+                            "OpenVINO STT: timeout utterance duration=%.2fs",
+                            buffer_duration
+                        )
+                        
+                        self._transcribe_audio(full_audio)
+                        speech_buffer = []
+                        silence_chunks = 0
                 continue
             except Exception as e:
-                logging.error(f"Audio processing error: {e}")
-
-    def _handle_transcription(self, text: str):
-        logging.info(f"[Offline Raw]: {text}")
-        cmd = self.parser.parse_command(text)
-        if cmd:
-            logging.info(f"==> [Offline Command Parsed]: {cmd['command']} | Params: {cmd['parameters']}")
-            self.transcription_queue.put(cmd['original_text']) # Put original text for CommandHandler
+                logging.error(f"Audio processing error in OpenVINO STT: {e}")
+    
+    def _transcribe_audio(self, audio_data):
+        """Transcribe a complete audio utterance."""
+        try:
+            # Prepare audio for model
+            inputs = self.processor(
+                audio_data,
+                sampling_rate=self.config.sample_rate,
+                return_tensors="pt"
+            )
             
-            # Update recent commands for context
-            self.recent_commands.append(cmd['command'])
-            if len(self.recent_commands) > self.max_recent_commands:
-                self.recent_commands.pop(0)
-        else:
-            logging.info(f"[Offline Ignored]: No valid command parsed from '{text.lower()}'")
+            # Generate transcription using OpenVINO model
+            # Re-enabling prompt biasing with robust shape handling
+            contextual_prompt = self._get_contextual_prompt()
+            
+            # Get base prompt IDs
+            prompt_ids = self.processor.get_decoder_prompt_ids(
+                task="transcribe",
+                language="en"
+            )
+            
+            # Convert to tensor if it's a list
+            if not isinstance(prompt_ids, torch.Tensor):
+                prompt_ids = torch.tensor([prompt_ids]) if isinstance(prompt_ids, list) else torch.tensor([[prompt_ids]])
+            
+            # Ensure prompt_ids is 2D: [batch_size, seq_len]
+            if prompt_ids.dim() == 1:
+                prompt_ids = prompt_ids.unsqueeze(0)
+            elif prompt_ids.dim() == 3:
+                prompt_ids = prompt_ids.squeeze(0)
+            
+            # FIX: Ensure batch dimension is 1 to match prompt_tokens
+            if prompt_ids.shape[0] > 1:
+                prompt_ids = prompt_ids[0:1]
+            
+            # Tokenize the contextual prompt for biasing
+            if contextual_prompt:
+                prompt_tokens = self.processor.tokenizer(
+                    contextual_prompt,
+                    add_special_tokens=False,
+                    return_tensors="pt"
+                )["input_ids"]
+                
+                # Ensure prompt_tokens is also 2D: [batch_size, seq_len]
+                if prompt_tokens.dim() == 1:
+                    prompt_tokens = prompt_tokens.unsqueeze(0)
+                elif prompt_tokens.dim() == 3:
+                    prompt_tokens = prompt_tokens.squeeze(0)
+                
+                # Concatenate if shapes match in dim 0 (batch size)
+                if prompt_ids.shape[0] == prompt_tokens.shape[0]:
+                    full_prompt_ids = torch.cat([prompt_ids, prompt_tokens], dim=1)
+                else:
+                    logging.warning(f"Shape mismatch in biasing: ids={prompt_ids.shape}, tokens={prompt_tokens.shape}")
+                    full_prompt_ids = prompt_ids
+            else:
+                full_prompt_ids = prompt_ids
 
+            # Generate transcription using OpenVINO model
+            # Provide attention_mask if available to avoid warnings
+            generate_kwargs = {
+                "max_new_tokens": 128,
+                "attention_mask": inputs.get("attention_mask", None),
+            }
+            predicted_ids = self.model.generate(inputs["input_features"], **generate_kwargs)
+
+            
+            # Decode transcription
+            decoded_list = self.processor.batch_decode(
+                predicted_ids,
+                skip_special_tokens=True
+            )
+            
+            if not decoded_list:
+                return
+
+            transcribed_text = decoded_list[0].strip()
+            
+            # Filter common Whisper hallucinations/noise
+            hallucinations = ["you", "so", "sure", "thanks", "thank you", "subtitles by", "watching"]
+            clean_text = transcribed_text.lower().strip(".,!?")
+            
+            if clean_text in hallucinations:
+                logging.debug(f"Ignored hallucination: '{transcribed_text}'")
+                return
+            
+            # Filter prompt regurgitation
+            if clean_text.startswith("commands:") or "create folder, open folder" in clean_text:
+                logging.warning(f"Ignored prompt regurgitation: '{transcribed_text}'")
+                return
+
+            if transcribed_text and len(transcribed_text) >= 2:
+                self._handle_transcription(transcribed_text)
+                
+        except Exception as e:
+            logging.error(f"Transcription error in OpenVINO STT: {e}")
+    
+    def _handle_transcription(self, text: str):
+        logging.info(f"[OpenVINO Raw]: {text}")
+        
+        if self.mode == "COMMAND":
+            # Parse as command
+            cmd = self.parser.parse_command(text)
+            if cmd:
+                logging.info(f"==> [OpenVINO Command Parsed]: {cmd['command']} | Params: {cmd['parameters']}")
+                self.transcription_queue.put(cmd['original_text'])
+                
+                # Update recent commands for context
+                self.recent_commands.append(cmd['command'])
+                if len(self.recent_commands) > self.max_recent_commands:
+                    self.recent_commands.pop(0)
+            else:
+                logging.info(f"[OpenVINO Ignored]: No valid command parsed from '{text.lower()}'")
+        else:
+            # Dictation mode: pass through all transcriptions
+            logging.info(f"[OpenVINO Dictation]: {text}")
+            self.transcription_queue.put(text)
+    
     def get_transcription(self) -> Optional[str]:
         try:
             return self.transcription_queue.get_nowait()
         except queue.Empty:
             return None
+
 
 # --- Online STT Engine (Original) ---
 class OnlineSTT:
@@ -373,6 +585,16 @@ class OnlineSTT:
         self.transcription_queue = transcription_queue
         self._stop_listening = None
         self.is_paused = True
+
+        # --- ADD THESE SETTINGS ---
+        # Increase pause threshold (seconds of non-speaking audio before a phrase is considered complete)
+        self.recognizer.pause_threshold = 1.2  # Default is ~0.8. Increase to allow slower speech.
+
+        # Prevent cutting off too early in noisy environments
+        self.recognizer.non_speaking_duration = 0.8
+
+        # Dynamic energy adjustment (helps if mic volume changes)
+        self.recognizer.dynamic_energy_threshold = True
 
     def start(self):
         with self.microphone as source:
@@ -408,13 +630,24 @@ class OnlineSTT:
             pass # Ignore silence
         except sr.RequestError as e:
             logging.error(f"Google API request failed; {e}")
+            # Signal to the hybrid controller that we should switch to offline mode
+            try:
+                self.transcription_queue.put(SWITCH_TO_OFFLINE_SIGNAL)
+            except Exception:
+                pass
 
 
 # --- Network Monitor (Original) ---
 class NetworkMonitor:
     """Monitors internet connectivity and triggers callbacks on status change."""
     def __init__(self, check_interval=10):
+        logging.info("Initializing Network Monitor...")
         self.is_online = self._check_internet()
+        logging.info(f"🌐 Network Status on Startup: {'ONLINE' if self.is_online else 'OFFLINE'}")
+        if self.is_online:
+            logging.info("📡 Google Voice-to-Text will be activated")
+        else:
+            logging.info("📴 OpenVINO offline mode will be activated")
         self._check_interval = check_interval
         self._callbacks = []
         self._stop_event = threading.Event()
@@ -423,9 +656,13 @@ class NetworkMonitor:
 
     def _check_internet(self):
         try:
+            logging.debug("Checking internet connectivity to 8.8.8.8:53...")
             socket.create_connection(("8.8.8.8", 53), timeout=3)
+            logging.info("✅ Internet connectivity detected - Google Voice-to-Text will be used")
             return True
-        except OSError:
+        except OSError as e:
+            logging.warning(f"❌ Internet connectivity check failed: {e}")
+            logging.warning("Falling back to OpenVINO offline mode")
             return False
 
     def _monitor_loop(self):
@@ -455,12 +692,29 @@ class HybridVoiceRecognizer:
         self.network_monitor = NetworkMonitor()
         
         self.online_engine: Optional[OnlineSTT] = None
-        self.offline_engine: Optional[OfflineSTT] = None
+        # Offline engine is OpenVINO Whisper
+        self.offline_engine: Optional[OpenVINOWhisperSTT] = None
         self.current_mode: Optional[str] = None
+
+        # Pre-build offline engine so it is ready in RAM when needed
+        self._build_offline_engine()
 
         self.network_monitor.register_callback(self._on_network_change)
         self._initialize_engine()
         logging.info(f"Hybrid Voice Recognizer initialized in {self.current_mode} mode.")
+
+    def _build_offline_engine(self):
+        """Instantiate the OpenVINO Whisper offline engine."""
+        if OPENVINO_AVAILABLE:
+            try:
+                self.offline_engine = OpenVINOWhisperSTT(OpenVINOConfig())
+                logging.info("✅ OpenVINO Whisper offline STT engine created successfully.")
+                return
+            except Exception as e:
+                logging.error(f"Failed to initialize OpenVINO offline engine: {e}")
+                self.offline_engine = None
+        else:
+            logging.warning("OpenVINO not available. Offline mode will not be available.")
 
     def _initialize_engine(self):
         """Starts the appropriate engine based on the current network status."""
@@ -469,7 +723,7 @@ class HybridVoiceRecognizer:
         elif OFFLINE_AVAILABLE:
             self._start_offline_engine()
         else:
-            logging.error("No STT engine available! Internet is offline and Faster Whisper is not installed.")
+            logging.error("No STT engine available! Internet is offline and no offline engine could be initialized.")
             self.current_mode = "UNAVAILABLE"
 
     def _start_online_engine(self):
@@ -477,8 +731,8 @@ class HybridVoiceRecognizer:
             return
         logging.info("Switching to ONLINE recognition engine...")
         if self.offline_engine:
+            # Stop offline engine but keep the instance so it remains preloaded in RAM.
             self.offline_engine.stop()
-            self.offline_engine = None
         
         self.online_engine = OnlineSTT(self.transcription_queue)
         self.online_engine.start()
@@ -491,11 +745,15 @@ class HybridVoiceRecognizer:
         if self.online_engine:
             self.online_engine.stop()
             self.online_engine = None
-        
-        # The new OfflineSTT is self-contained and doesn't need command_mappings
-        self.offline_engine = OfflineSTT(OfflineConfig())
-        self.offline_engine.start()
-        self.current_mode = "OFFLINE"
+
+        if not self.offline_engine:
+            self._build_offline_engine()
+
+        if self.offline_engine:
+            self.offline_engine.start()
+            self.current_mode = "OFFLINE"
+        else:
+            logging.error("Failed to start offline engine; no offline STT available.")
 
     def _on_network_change(self, is_online: bool):
         """Callback for network status changes."""
@@ -522,27 +780,54 @@ class HybridVoiceRecognizer:
         self.network_monitor.stop()
 
     def pause_listening(self):
-        logging.info("Voice recognition paused.")
+        logging.info(
+            "Voice recognition paused. mode=%s offline_running=%s offline_paused=%s",
+            self.current_mode,
+            getattr(self.offline_engine, "is_running", None),
+            getattr(self.offline_engine, "is_paused", None),
+        )
         if self.online_engine:
             self.online_engine.pause()
         if self.offline_engine:
             self.offline_engine.pause()
     
     def resume_listening(self):
-        logging.info("Voice recognition resumed.")
+        logging.info(
+            "Voice recognition resumed. mode=%s offline_running=%s offline_paused=%s",
+            self.current_mode,
+            getattr(self.offline_engine, "is_running", None),
+            getattr(self.offline_engine, "is_paused", None),
+        )
         if self.online_engine:
             self.online_engine.resume()
         if self.offline_engine:
             self.offline_engine.resume()
 
+    def set_mode(self, mode: str):
+        """Switch offline engine between COMMAND and DICTATION modes when applicable."""
+        if self.current_mode == "OFFLINE" and hasattr(self.offline_engine, "set_mode"):
+            try:
+                self.offline_engine.set_mode(mode)
+            except Exception as e:
+                logging.error(f"Failed to set offline STT mode to {mode}: {e}")
+
     def get_transcription(self) -> Optional[str]:
         if self.current_mode == "ONLINE":
             try:
-                return self.transcription_queue.get_nowait()
+                text = self.transcription_queue.get_nowait()
             except queue.Empty:
                 return None
+            # Handle signal from OnlineSTT requesting a failover to offline.
+            if text == SWITCH_TO_OFFLINE_SIGNAL:
+                logging.warning("Online STT requested switch to OFFLINE mode.")
+                self._start_offline_engine()
+                return None
+            return text
         elif self.current_mode == "OFFLINE" and self.offline_engine:
-            return self.offline_engine.get_transcription()
+            text = self.offline_engine.get_transcription()
+            if text is not None:
+                logging.debug("HybridVoiceRecognizer: received offline transcription '%s'", text)
+            return text
         
         return None
 

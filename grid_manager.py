@@ -59,7 +59,7 @@ class GridManager:
         self._resume_cb = resume_cb
 
     # ---------- Public API ----------
-    def show_grid(self, density: Optional[str] = None, pinned: bool = False, on_window_rect: Optional[Rect] = None) -> None:
+    def show_grid(self, density: Optional[str] = None, pinned: bool = False, on_window_rect: Optional[Rect] = None) -> Tuple[bool, str]:
         self._pinned = pinned
         if density:
             self._cell_size_px = self._density_to_cell_size(density)
@@ -80,20 +80,17 @@ class GridManager:
         self._enqueue("_cmd_show", {})
         if self._pause_cb:
             self._pause_cb()
+        return True, "Grid shown"
 
-    def hide_grid(self) -> None:
+    def hide_grid(self) -> Tuple[bool, str]:
         self._enqueue("_cmd_hide", {})
+        return True, "Grid hidden"
 
-    def set_grid_divisions(self, divisions: int) -> None:
-        """Dynamically set grid to N x N divisions over the current view.
-
-        Chooses a cell size so that both width and height are divided into
-        approximately 'divisions' steps, using the smaller axis to keep cells square.
-        """
+    def set_grid_divisions(self, divisions: int) -> Tuple[bool, str]:
+        """Dynamically set grid to N x N divisions over the current view."""
         try:
             if divisions is None or not isinstance(divisions, int):
-                self.speech.speak("Please say a valid grid number")
-                return
+                return False, "Please say a valid grid number"
             # Clamp to sensible range
             divisions = max(2, min(50, divisions))
             draw_rect = self._zoom_stack[-1] if self._zoom_stack else self._get_virtual_screen_rect()
@@ -104,21 +101,30 @@ class GridManager:
             step = max(30, min(width // divisions, height // divisions))
             self._cell_size_px = int(step)
             self._enqueue("_cmd_redraw", {})
+            return True, f"Grid set to {divisions} by {divisions}"
         except Exception:
-            self.speech.speak("Could not set grid size")
+            return False, "Could not set grid size"
 
-    def click_cell(self, cell: CellIndex, button: str = "left") -> bool:
+    def click_cell(self, cell: CellIndex, button: str = "left") -> Tuple[bool, str]:
         def _do_click():
             if button == "right":
                 pyautogui.click(button="right")
             else:
                 pyautogui.click(button="left" if button == "left" else button)
-        return self._perform_mouse_action(cell, _do_click, keep_mouse_at_target=True)
+        
+        success = self._perform_mouse_action(cell, _do_click, keep_mouse_at_target=True)
+        if success:
+            return True, f"Clicked cell {cell}"
+        return False, f"Failed to click cell {cell}"
 
-    def double_click_cell(self, cell: CellIndex) -> bool:
+    def double_click_cell(self, cell: CellIndex) -> Tuple[bool, str]:
         def _do_double():
             pyautogui.doubleClick(interval=0.1)
-        return self._perform_mouse_action(cell, _do_double, keep_mouse_at_target=True)
+        
+        success = self._perform_mouse_action(cell, _do_double, keep_mouse_at_target=True)
+        if success:
+            return True, f"Double clicked cell {cell}"
+        return False, f"Failed to double click cell {cell}"
 
     def _perform_mouse_action(self, cell: CellIndex, action_func, keep_mouse_at_target: bool = False) -> bool:
         """Perform a mouse action at the specified cell. If grid is not pinned, briefly hide it to guarantee click-through."""
@@ -149,61 +155,53 @@ class GridManager:
             print(f"Mouse action error at cell {cell}: {e}")
             return False
 
-    def start_drag(self, cell: CellIndex) -> bool:
+    def start_drag(self, cell: CellIndex) -> Tuple[bool, str]:
         pt = self._cell_centers.get(cell)
         if not pt:
-            self.speech.speak("Unknown cell number")
-            return False
+            return False, "Unknown cell number"
         try:
             pyautogui.moveTo(pt[0], pt[1])
             pyautogui.mouseDown()
             self._drag_start_cell = cell
             self._flash_cell(cell, color="#ffc107")
-            return True
+            return True, "Drag started"
         except Exception:
-            self.speech.speak("Drag start failed")
-            return False
+            return False, "Drag start failed"
 
-    def drop_on(self, cell: CellIndex, duration: float = 0.4) -> bool:
+    def drop_on(self, cell: CellIndex, duration: float = 0.4) -> Tuple[bool, str]:
         if self._drag_start_cell is None:
-            self.speech.speak("No drag in progress")
-            return False
+            return False, "No drag in progress"
         pt = self._cell_centers.get(cell)
         if not pt:
-            self.speech.speak("Unknown target cell")
-            return False
+            return False, "Unknown target cell"
         try:
             pyautogui.dragTo(pt[0], pt[1], duration=duration)
             pyautogui.mouseUp()
             self._drag_start_cell = None
-            return True
+            return True, "Dropped"
         except Exception:
-            self.speech.speak("Drag failed")
-            return False
+            return False, "Drag failed"
 
-    def zoom_cell(self, cell: CellIndex) -> bool:
+    def zoom_cell(self, cell: CellIndex) -> Tuple[bool, str]:
         rect = self._cell_rects.get(cell)
         if not rect:
-            self.speech.speak("Unknown cell number")
-            return False
+            return False, "Unknown cell number"
         self._zoom_stack.append(rect)
         self._enqueue("_cmd_redraw", {})
-        return True
+        return True, "Zoomed"
 
-    def exit_zoom(self) -> bool:
+    def exit_zoom(self) -> Tuple[bool, str]:
         if not self._zoom_stack:
-            self.speech.speak("Not zoomed")
-            return False
+            return False, "Not zoomed"
         self._zoom_stack.pop()
         self._enqueue("_cmd_redraw", {})
-        return True
+        return True, "Zoom exited"
 
     # ---------- Internal UI Thread ----------
     def _ensure_thread(self) -> None:
         if self._tk_thread and self._tk_thread.is_alive():
             return
         if tk is None:
-            self.speech.speak("Grid overlay not available")
             return
 
         self._tk_thread = threading.Thread(target=self._run_tk, daemon=True)
